@@ -1,3 +1,4 @@
 {
-    "jwt_key": "eBx87S0lS1lCEywyqDl81iPeTnTm6RF3"
+    "jwt_key": "eBx87S0lS1lCEywyqDl81iPeTnTm6RF3",
+    "mount_paths": ["/:/host"]
 }

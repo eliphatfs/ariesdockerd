@@ -1,6 +1,14 @@
 import os
 import json
 import functools
+from typing import *
+from dataclasses import dataclass
+
+
+@dataclass
+class Config:
+    jwt_key: str
+    mount_paths: List[str]
 
 
 @functools.lru_cache(maxsize=None)
@@ -14,4 +22,4 @@ def get_config():
     else:
         raise FileNotFoundError("Please place config in working directory, `~/.ariesdockerd/config.json` or `/etc/ariesdockerd/config.json`")
     with open(cfg_file) as fi:
-        return json.load(fi)
+        return Config(**json.load(fi))
