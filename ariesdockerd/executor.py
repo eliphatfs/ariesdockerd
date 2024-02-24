@@ -63,7 +63,7 @@ class Executor(object):
         return self.client.containers.get(container_id).status
 
     def scan(self):
-        valid = []
+        valid: List[Tuple[Container, dict]] = []
         for container in self.client.containers.list(all=True):
             if 'ariesmanaged' in container.labels:
                 token = container.labels['ariesmanaged']
