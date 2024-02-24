@@ -71,7 +71,7 @@ class Executor(object):
                     info = jwt.decode(token, get_config().jwt_key)
                     valid.append((container, info))
                 except jwt.InvalidTokenError:
-                    logging.warning("Invalid Token Found in `ariesmanaged`: {0}", token)
+                    logging.warning("Invalid Token Found in `ariesmanaged`: %s", token)
         return valid
 
     def bookkeep(self):
