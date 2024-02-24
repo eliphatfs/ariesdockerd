@@ -32,6 +32,7 @@ setuptools.setup(
         'pyjwt',
         'docker',
         'websockets',
+        'aioconsole',
         'typing_extensions'
     ],
     entry_points=dict(
