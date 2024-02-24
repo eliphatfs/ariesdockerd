@@ -36,6 +36,10 @@ setuptools.setup(
         'typing_extensions'
     ],
     entry_points=dict(
-        console_scripts=[]
+        console_scripts=[
+            "aries=ariesdockerd.client:sync_main",
+            "ariesdockerd=ariesdockerd.daemon:sync_main",
+            "ariescentral=ariesdockerd.central:sync_main",
+        ]
     )
 )
