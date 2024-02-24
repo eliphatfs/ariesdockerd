@@ -1,9 +1,10 @@
 import jwt
 import datetime
 from .config import get_config
+from .error import AriesError
 
 
-class AuthError(Exception):
+class AuthError(AriesError):
     pass
 
 
@@ -11,12 +12,12 @@ def run_auth(token: str):
     try:
         decoded = jwt.decode(token, get_config().jwt_key)
         if 'user' not in decoded:
-            raise AuthError(1, 'user not found in token, problem with token issuer')
+            raise AuthError(2, 'user not found in token, problem with token issuer')
         return decoded
     except jwt.InvalidSignatureError:
-        raise AuthError(2, 'invalid token')
+        raise AuthError(3, 'invalid token')
     except jwt.ExpiredSignatureError:
-        raise AuthError(3, 'token expired')
+        raise AuthError(4, 'token expired')
 
 
 def issue(user: str, exp: int = 300):
