@@ -62,5 +62,5 @@ async def main():
         await stop_signal
 
 
-if __name__ == "__main__":
+def sync_main():
     asyncio.run(main())
