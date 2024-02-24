@@ -38,6 +38,9 @@ class Executor(object):
             if time.time() > v.entry_creation_time + 86400 * 7:
                 self.exit_store.pop(k)
 
+    def stop(self, container: str):
+        return self.client.containers.get(container).stop()
+
     def run(self, name: str, image: str, cmd: str, gpu_ids: List[int], user: str):
         gpu_id_string = ','.join(map(str, gpu_ids))
         bookkeep_info = dict(gpu_ids=gpu_ids, user=user)

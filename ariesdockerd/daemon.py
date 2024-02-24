@@ -8,6 +8,7 @@ import threading
 import subprocess
 import websockets
 from .auth import issue
+from .error import AriesError
 from .config import get_config
 from .protocol import command_handler, client_serial, common_task_callback
 from .executor import Executor
@@ -23,10 +24,12 @@ def total_gpus():
 
 def free_gpu_task(ws: websockets.WebSocketServerProtocol, payload):
     gpus = set(range(total_gpus()))
+    names = set()
     for container, info in core.scan():
+        names.add(container.name)
         for gpu in info['gpu_ids']:
             gpus.remove(gpu)
-    return dict(gpu_ids=sorted(gpus))
+    return dict(gpu_ids=sorted(gpus), names=sorted(names))
 
 
 def tyck(obj, ty, name):
@@ -34,12 +37,7 @@ def tyck(obj, ty, name):
 
 
 def run_container_task(ws: websockets.WebSocketServerProtocol, payload):
-    gpus = set(range(total_gpus()))
-    names = set()
-    for container, info in core.scan():
-        names.add(container.name)
-        for gpu in info['gpu_ids']:
-            gpus.remove(gpu)
+    gpus, names = free_gpu_task(ws, payload)
     gpu_ids = payload['gpu_ids']
     name = payload['name']
     image = payload['image']
@@ -75,6 +73,16 @@ def list_containers_task(ws: websockets.WebSocketServerProtocol, payload):
     for short_id, es in core.exit_store.items():
         data_dict[short_id] = dict(gpu_ids=[], user=es.user, status='exited', name=es.name)
     return dict(containers=data_dict)
+
+
+def stop_container_task(ws: websockets.WebSocketServerProtocol, payload):
+    container = payload['container']
+    tyck(container, str, 'container')
+    filt = [v for k, v in core.exit_store.items() if k.startswith(container) or v.name == container]
+    if len(filt) == 1:
+        raise AriesError(9, 'container already stopped')
+    core.stop(container)
+    return dict()
 
 
 def threaded_handler(func):
