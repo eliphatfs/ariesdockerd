@@ -8,6 +8,7 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     jwt_key: str
+    central_host: str
     mount_paths: List[str]
 
 
