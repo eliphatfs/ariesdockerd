@@ -1,5 +1,6 @@
 import jwt
 import datetime
+import argparse
 from .config import get_config
 from .error import AriesError
 from typing_extensions import Literal
@@ -28,3 +29,11 @@ def issue(user: str, kind: Literal['user', 'daemon'] = 'user', exp: int = 300):
         kind=kind,
         v=1
     ), get_config().jwt_key)
+
+
+def issue_token_main():
+    argp = argparse.ArgumentParser()
+    argp.add_argument("user", type=str)
+    argp.add_argument("-e", "--exp", type=int, default=86400 * 60)
+    args = argp.parse_args()
+    print(issue(args.user, 'user', args.exp))

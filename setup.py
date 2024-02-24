@@ -40,6 +40,7 @@ setuptools.setup(
             "aries=ariesdockerd.client:sync_main",
             "ariesdockerd=ariesdockerd.daemon:sync_main",
             "ariescentral=ariesdockerd.central:sync_main",
+            "aries-auth-issue-token=ariesdockerd.auth:issue_token_main",
         ]
     )
 )
