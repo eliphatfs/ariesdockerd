@@ -25,5 +25,6 @@ def issue(user: str, kind: Literal['user', 'daemon'] = 'user', exp: int = 300):
     return jwt.encode(dict(
         exp=datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(seconds=exp),
         user=user,
-        kind=kind
+        kind=kind,
+        v=1
     ), get_config().jwt_key)
