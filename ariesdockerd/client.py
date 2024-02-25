@@ -135,7 +135,8 @@ async def main():
         auth = await client_serial(ws, 'auth', dict(token=cfg['token']))
         if auth['code'] != 0:
             print('[error] login failed:', auth['msg'])
-        print('logged in as', auth['user'])
+        else:
+            print('logged in as', auth['user'])
         py = False
         while True:
             try:
