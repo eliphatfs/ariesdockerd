@@ -19,3 +19,7 @@ class TestScheduler(unittest.TestCase):
         self.assertRaises(AriesError, schedule, {'A': [0], 'B': [5, 6, 7]}, 1, 4)
         self.assertRaises(AriesError, schedule, {'A': [0], 'B': [5, 6, 7]}, 2, 2)
         self.assertRaises(AriesError, schedule, {'A': [0], 'B': [5, 6, 7]}, 5, 1)
+        self.assertListEqual(
+            (schedule({'A': [0, 1, 2], 'B': [5, 6]}, 3, 0)),
+            ([('A', []), ('B', []), ('A', [])])
+        )
