@@ -10,8 +10,9 @@ from .scheduling import schedule
 
 
 class CentralState:
-    auth_kind: str = None
-    auth_name: str = None
+    auth_kind: Optional[str] = None
+    auth_name: Optional[str] = None
+    callback: Optional[Callable[[str], None]] = None
 
 
 state_store: Dict[websockets.WebSocketServerProtocol, CentralState] = dict()
@@ -22,7 +23,7 @@ async def auth_handler(ws: websockets.WebSocketServerProtocol, payload):
     decode = run_auth(payload['token'])
     cs = state_store[ws]
     cs.auth_kind = decode['kind']
-    cs.auth_name = decode['name']
+    cs.auth_name = decode['user']
     return dict(user=cs.auth_name)
 
 
@@ -33,12 +34,25 @@ def check_auth(ws: websockets.WebSocketServerProtocol, expected_kind: str = 'use
     return cs.auth_name
 
 
+def bypass_daemon(ws: websockets.WebSocketServerProtocol, message):
+    cs = state_store[ws]
+    if cs.callback is not None:
+        cs.callback(message)
+        if cs.auth_kind == 'daemon':
+            return True
+    return False
+
+
 async def daemon_handler(ws: websockets.WebSocketServerProtocol, payload):
     check_auth(ws, 'daemon')
     ac = AsyncClient(ws)
     daemons.add(ac)
+    state_store[ws].callback = lambda x: ac.result(x)
     try:
-        await ac.listen()
+        await ws.wait_closed()
+    except Exception:
+        import traceback
+        traceback.print_exc()
     finally:
         daemons.remove(ac)
     raise NoResponse
@@ -68,15 +82,15 @@ def cat_aggregate(results: List[dict]):
     for result in results:
         if result['code'] != 0:
             raise AriesError(10, 'error from daemon: %d %s' % (result['code'], result['msg']))
-        for k in result:
-            if isinstance(k, list):
+        for k, v in result.items():
+            if isinstance(v, list):
                 if k not in x:
                     x[k] = list()
-                x[k].extend(k)
-            elif isinstance(k, dict):
+                x[k].extend(v)
+            elif isinstance(v, dict):
                 if k not in x:
                     x[k] = dict()
-                x[k].update(k)
+                x[k].update(v)
     return x
 
 
@@ -92,16 +106,17 @@ async def daemon_broadcast(cmd: str, args: dict, aggregator: Callable):
 async def logs_handler(ws: websockets.WebSocketServerProtocol, payload):
     check_auth(ws)
     container = payload['container']
-    tyck(container, str)
-    return daemon_broadcast('get_logs', dict(container=container), any_aggregate)
+    tyck(container, str, 'container')
+    return await daemon_broadcast('get_logs', dict(container=container), any_aggregate)
 
 
 async def ps_handler(ws: websockets.WebSocketServerProtocol, payload):
     check_auth(ws)
     filt = payload.get('filt')
     if filt is not None:
-        tyck(filt, str)
-    res = daemon_broadcast('list_containers', dict(), cat_aggregate)
+        tyck(filt, str, 'filt')
+    res = await daemon_broadcast('list_containers', dict(), cat_aggregate)
+    print(res)
     return dict(containers={
         k: v
         for k, v in res['containers']
@@ -112,19 +127,20 @@ async def ps_handler(ws: websockets.WebSocketServerProtocol, payload):
 async def stop_handler(ws: websockets.WebSocketServerProtocol, payload):
     check_auth(ws)
     container = payload['container']
-    tyck(container, str)
-    return daemon_broadcast('stop_container', dict(container=container), any_aggregate)
+    tyck(container, str, 'container')
+    return await daemon_broadcast('stop_container', dict(container=container), any_aggregate)
 
 
 async def remove_handler(ws: websockets.WebSocketServerProtocol, payload):
     check_auth(ws)
     container = payload['container']
-    tyck(container, str)
-    return daemon_broadcast('remove_container', dict(container=container), any_aggregate)
+    tyck(container, str, 'container')
+    return await daemon_broadcast('remove_container', dict(container=container), any_aggregate)
 
 
 async def collect_nodes(include_finalized):
     tasks = dict()
+    logging.debug("# daemon: %d", len(daemons))
     for daemon in daemons:
         name = state_store[daemon.ws].auth_name
         tasks[name] = asyncio.create_task(daemon.issue('node_info', dict(include_finalized=include_finalized)))
@@ -149,7 +165,7 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload):
     nodes = await collect_nodes(True)
     available = {}
     for node, info in nodes:
-        available[node] = info['gpu_ids']
+        available[node] = info['free_gpu_ids']
         if n_jobs is None:
             if name in info['names']:
                 raise AriesError(14, 'container of same name already exists!')
@@ -192,7 +208,7 @@ dispatch = dict(
 async def handler(ws: websockets.WebSocketServerProtocol):
     state_store[ws] = CentralState()
     try:
-        await command_handler(ws, dispatch)
+        await command_handler(ws, dispatch, bypass_daemon)
     except Exception:
         logging.exception("Unexpected Error in Outer Loop")
     state_store.pop(ws)
@@ -200,7 +216,7 @@ async def handler(ws: websockets.WebSocketServerProtocol):
 
 async def main():
     global stop_signal
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     stop_signal = asyncio.Future()
     async with websockets.serve(handler, 'localhost', 23549):
         await stop_signal

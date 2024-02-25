@@ -27,7 +27,12 @@ async def process_command(ws: websockets.WebSocketCommonProtocol, dispatch: dict
         except AriesError as exc:
             await ws.send(json.dumps(dict(ticket=ticket, code=exc.args[0], msg=exc.args[1])))
         except Exception as exc:
-            await ws.send(json.dumps(dict(ticket=ticket, code=-1, msg=repr(exc))))
+            import traceback
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                msg = traceback.format_exc()
+            else:
+                msg = repr(exc)
+            await ws.send(json.dumps(dict(ticket=ticket, code=-1, msg=msg)))
     except websockets.ConnectionClosed:
         return
 
@@ -43,14 +48,14 @@ def common_task_callback(name: str):
     return process_task_callback
 
 
-def bypass_callback(msg):
+def bypass_callback(ws, message):
     return False
 
 
 async def command_handler(ws: websockets.WebSocketCommonProtocol, dispatch: dict, callback: Callable[[str], bool] = bypass_callback):
     try:
         async for message in ws:
-            if bypass_callback(ws, message):
+            if callback(ws, message):
                 continue
             coro = process_command(ws, dispatch, message)
             task = asyncio.create_task(coro)
