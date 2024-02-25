@@ -10,6 +10,8 @@ def schedule(available: Dict[Any, List[int]], njobs: int, ngpus: int):
         raise AriesError(11, "NGPUs should be in [0, 1, 2, 4, 8, 16]", ngpus)
     
     sched = []
+    if njobs is None:
+        njobs = 1
     for i in range(njobs):
         min_seg = None
         sel_node = None
