@@ -31,6 +31,7 @@ class Executor(object):
             self.shared_devices.append('/dev/infiniband:/dev/infiniband')
 
     def clean_up(self):
+        logging.info("Performing clean-up...")
         self.client.containers.prune()
         self.client.networks.prune()
         self.client.images.prune(filters=dict(dangling=False))

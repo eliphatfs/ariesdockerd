@@ -130,6 +130,48 @@ async def stop_handler(ws: websockets.WebSocketServerProtocol, payload):
     return await daemon_broadcast('stop_container', dict(container=container), any_aggregate)
 
 
+async def jstop_handler(ws: websockets.WebSocketServerProtocol, payload):
+    check_auth(ws)
+    job = payload['job']
+    tyck(job, str, 'job')
+    nodes = await collect_nodes(False)
+    tasks = []
+    for daemon in daemons:
+        node = state_store[daemon.ws].auth_name
+        for snode, info in nodes.items():
+            if snode == node:
+                for name in info['names']:
+                    if name.startswith(job + '-') and str.isnumeric(name[len(job) + 1:]):
+                        tasks.append(asyncio.create_task(
+                            daemon.issue('stop_container', dict(container=name)))
+                        )
+    if len(tasks) == 0:
+        raise AriesError(16, 'no such job to act on')
+    await asyncio.wait(tasks)
+    return cat_aggregate([task.result() for task in tasks])
+
+
+async def jremove_handler(ws: websockets.WebSocketServerProtocol, payload):
+    check_auth(ws)
+    job = payload['job']
+    tyck(job, str, 'job')
+    nodes = await collect_nodes(True)
+    tasks = []
+    for daemon in daemons:
+        node = state_store[daemon.ws].auth_name
+        for snode, info in nodes.items():
+            if snode == node:
+                for name in info['names']:
+                    if name.startswith(job + '-') and str.isnumeric(name[len(job) + 1:]):
+                        tasks.append(asyncio.create_task(
+                            daemon.issue('remove_container', dict(container=name)))
+                        )
+    if len(tasks) == 0:
+        raise AriesError(16, 'no such job to act on')
+    await asyncio.wait(tasks)
+    return cat_aggregate([task.result() for task in tasks])
+
+
 async def remove_handler(ws: websockets.WebSocketServerProtocol, payload):
     check_auth(ws)
     container = payload['container']
@@ -197,7 +239,9 @@ dispatch = dict(
     daemon=daemon_handler,
     logs=logs_handler,
     stop=stop_handler,
+    jstop=jstop_handler,
     delete=remove_handler,
+    jdelete=jremove_handler,
     ps=ps_handler,
     nodes=nodes_handler,
     run=run_handler

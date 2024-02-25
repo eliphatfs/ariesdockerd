@@ -67,8 +67,16 @@ async def stop(container: str):
     return await client_serial(ws, 'stop', dict(container=container))
 
 
+async def jstop(job: str):
+    return await client_serial(ws, 'jstop', dict(job=job))
+
+
 async def delete(container: str):
     return await client_serial(ws, 'delete', dict(container=container))
+
+
+async def jdelete(job: str):
+    return await client_serial(ws, 'jdelete', dict(job=job))
 
 
 async def run(name: str, image: str, cmd: List[str], n_gpus: int, n_jobs: Optional[int] = None):
@@ -91,8 +99,14 @@ async def run_command(argv):
     pstop = subs.add_parser('stop')
     pstop.add_argument('container')
 
+    pstop = subs.add_parser('jstop')
+    pstop.add_argument('job')
+
     pdelete = subs.add_parser('delete')
     pdelete.add_argument('container')
+
+    pdelete = subs.add_parser('jdelete')
+    pdelete.add_argument('job')
 
     prun = subs.add_parser('run')
     prun.add_argument('-j', '--n_jobs', default=None, type=int)
