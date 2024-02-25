@@ -164,6 +164,7 @@ async def one_pass():
         ws = await websockets.connect(get_config().central_host)
         result = await client_serial(ws, 'auth', dict(token=issue(socket.gethostname(), 'daemon')))
         assert result['code'] == 0, 'authentication failed: %s' % result['msg']
+        logging.info("Connected to Central Server")
         await ws.send(json.dumps(dict(ticket='daemon-special', cmd='daemon')))
         await command_handler(ws, dispatch)
     except Exception:
