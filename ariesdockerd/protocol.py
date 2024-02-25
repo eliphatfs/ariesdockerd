@@ -27,7 +27,7 @@ async def process_command(ws: websockets.WebSocketCommonProtocol, dispatch: dict
         except AriesError as exc:
             await ws.send(json.dumps(dict(ticket=ticket, code=exc.args[0], msg=exc.args[1])))
         except Exception as exc:
-            await ws.send(dict(ticket=ticket, code=-1, msg=repr(exc)))
+            await ws.send(json.dumps(dict(ticket=ticket, code=-1, msg=repr(exc))))
     except websockets.ConnectionClosed:
         return
 
@@ -43,14 +43,20 @@ def common_task_callback(name: str):
     return process_task_callback
 
 
-async def command_handler(ws: websockets.WebSocketCommonProtocol, dispatch: dict):
+def bypass_callback(msg):
+    return False
+
+
+async def command_handler(ws: websockets.WebSocketCommonProtocol, dispatch: dict, callback: Callable[[str], bool] = bypass_callback):
     try:
         async for message in ws:
+            if bypass_callback(ws, message):
+                continue
             coro = process_command(ws, dispatch, message)
             task = asyncio.create_task(coro)
             task.add_done_callback(common_task_callback('process-command'))
     except websockets.ConnectionClosed:
-        logging.warning("Caught Outer Loop Connection Closed")
+        logging.warning("Caught Outer Loop Connection Closed", exc_info=True)
 
 
 async def client_serial(ws: websockets.WebSocketCommonProtocol, cmd: str, args: dict):
@@ -66,12 +72,15 @@ class AsyncClient(object):
         self.ws = ws
         self.futures: Dict[str, asyncio.Future] = dict()
 
+    def result(self, message):
+        payload = json.loads(message)
+        ticket = payload['ticket']
+        assert ticket in self.futures, payload
+        self.futures[ticket].set_result(payload)
+
     async def listen(self):
         async for message in self.ws:
-            payload = json.loads(message)
-            ticket = payload['ticket']
-            assert ticket in self.futures, payload
-            self.futures[ticket].set_result(payload)
+            self.result(message)
 
     async def issue(self, cmd: str, args: dict):
         ticket = str(uuid.uuid4())
