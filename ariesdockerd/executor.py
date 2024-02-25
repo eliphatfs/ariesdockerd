@@ -12,7 +12,7 @@ from .config import get_config
 
 @dataclass
 class ContainerEphemeral:
-    logs: str
+    logs: bytes
     name: str
     user: str
     entry_creation_time: float
@@ -47,7 +47,7 @@ class Executor(object):
     def stop(self, container: str):
         return self.get_managed(container).stop()
 
-    def run(self, name: str, image: str, cmd: str, gpu_ids: List[int], user: str):
+    def run(self, name: str, image: str, cmd: Union[str, List[str]], gpu_ids: List[int], user: str):
         gpu_id_string = ','.join(map(str, gpu_ids))
         bookkeep_info = dict(gpu_ids=gpu_ids, user=user)
         token = jwt.encode(bookkeep_info, get_config().jwt_key, "HS256")
@@ -58,7 +58,7 @@ class Executor(object):
             detach=True,
             devices=self.shared_devices,
             device_requests=[DeviceRequest(device_ids=[gpu_id_string], capabilities=[['gpu']])],
-            ulimits=[Ulimit(name='memlock', soft='1048576000', hard='1048576000')],
+            ulimits=[Ulimit(name='memlock', soft=1048576000, hard=1048576000)],
             shm_size='%dG' % (4 * len(gpu_ids)),
             network_mode='host',
             volumes=self.mount_paths,
