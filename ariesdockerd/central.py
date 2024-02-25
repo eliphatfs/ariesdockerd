@@ -217,7 +217,7 @@ async def main():
     global stop_signal
     logging.basicConfig(level=logging.INFO)
     stop_signal = asyncio.Future()
-    async with websockets.serve(handler, 'localhost', 23549):
+    async with websockets.serve(handler, '127.0.0.1', 23549):
         await stop_signal
 
 
