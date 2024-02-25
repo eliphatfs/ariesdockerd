@@ -77,7 +77,7 @@ class Executor(object):
             if 'ariesmanaged' in container.labels:
                 token = container.labels['ariesmanaged']
                 try:
-                    info = jwt.decode(token, get_config().jwt_key)
+                    info = jwt.decode(token, get_config().jwt_key, algorithms=["HS256"])
                     valid.append((container, info))
                 except jwt.InvalidTokenError:
                     logging.warning("Invalid Token Found in `ariesmanaged`: %s", token)
