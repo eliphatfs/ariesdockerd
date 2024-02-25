@@ -37,7 +37,7 @@ async def nodes(show_jobs=False):
             header.append('Running')
         table = []
         for name, info in r['nodes'].items():
-            row = [name, ','.join(map(str, info['free_gpu_ids']))]
+            row = [name, ','.join(map(str, info.get('free_gpu_ids', [])))]
             if show_jobs:
                 row.append('\n'.join(info['names']))
             table.append(row)
