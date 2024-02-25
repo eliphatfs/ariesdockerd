@@ -38,8 +38,14 @@ class Executor(object):
             if time.time() > v.entry_creation_time + 86400 * 7:
                 self.exit_store.pop(k)
 
+    def get_managed(self, container: str):
+        cont: Container = self.client.containers.get(container)
+        if 'ariesmanaged' not in cont.labels:
+            raise ValueError("container not managed by executor", container)
+        return cont
+
     def stop(self, container: str):
-        return self.client.containers.get(container).stop()
+        return self.get_managed(container).stop()
 
     def run(self, name: str, image: str, cmd: str, gpu_ids: List[int], user: str):
         gpu_id_string = ','.join(map(str, gpu_ids))
@@ -59,11 +65,11 @@ class Executor(object):
             labels={"ariesmanaged": token}
         ).short_id
 
-    def logs(self, container_id: str):
-        return self.client.containers.get(container_id).logs()
+    def logs(self, container: str):
+        return self.get_managed(container).logs()
 
-    def stat(self, container_id: str):
-        return self.client.containers.get(container_id).status
+    def stat(self, container: str):
+        return self.get_managed(container).status
 
     def scan(self):
         valid: List[Tuple[Container, dict]] = []
