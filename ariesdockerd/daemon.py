@@ -179,6 +179,7 @@ async def main():
     logging.basicConfig(level=logging.INFO)
     stop_signal = asyncio.Future()
     back = 1
+    core.set_up()
     asyncio.create_task(cleanup()).add_done_callback(common_task_callback('daemon-clean-up'))
     asyncio.create_task(bookkeep()).add_done_callback(common_task_callback('daemon-bookkeep'))
     while not stop_signal.done():
