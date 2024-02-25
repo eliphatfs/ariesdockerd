@@ -1,7 +1,9 @@
 import os
 import json
+import shlex
 import asyncio
 import tabulate
+import argparse
 import aioconsole
 import websockets
 from typing import Optional
@@ -73,6 +75,41 @@ async def run(name: str, image: str, cmd: str, n_gpus: int, n_jobs: Optional[int
     return await client_serial(ws, 'run', dict(name=name, image=image, cmd=cmd, n_gpus=n_gpus, n_jobs=n_jobs))
 
 
+async def run_command(argv):
+    argp = argparse.ArgumentParser()
+    subs = argp.add_subparsers(dest='command')
+
+    pnodes = subs.add_parser('nodes')
+    pnodes.add_argument('-j', '--show_jobs', action='store_true')
+
+    pps = subs.add_parser('ps')
+    pps.add_argument('-f', '--filt', default=None, type=str)
+
+    plogs = subs.add_parser('logs')
+    plogs.add_argument('container')
+
+    pstop = subs.add_parser('stop')
+    pstop.add_argument('container')
+
+    pdelete = subs.add_parser('delete')
+    pdelete.add_argument('container')
+
+    prun = subs.add_parser('run')
+    prun.add_argument('-j', '--n_jobs', default=None, type=int)
+    prun.add_argument('-g', '--n_gpus', default=1, type=int)
+    prun.add_argument('name')
+    prun.add_argument('image')
+    prun.add_argument('cmd', nargs='+')
+
+    try:
+        args = argp.parse_args(argv)
+    except SystemExit:
+        raise ValueError("invalid command")
+    kw = dict(args.__dict__)
+    cmd = kw.pop('command')
+    return await (globals()[cmd])(**kw)
+
+
 async def main():
     global ws
     if not os.path.exists(os.path.expanduser("~/.aries/config.json")):
@@ -87,12 +124,11 @@ async def main():
         print('logged in as', auth['user'])
         while True:
             try:
-                cmd = await aioconsole.ainput('aries> ')
-                if cmd in ['nodes', 'ps']:
-                    cmd = cmd + '()'
-                if cmd == 'quit':
+                cmd: str = await aioconsole.ainput('aries> ')
+                if cmd == 'q':
                     break
-                resp(await eval(cmd))
+                argv = shlex.split(cmd)
+                resp(await run_command(argv))
             except Exception as exc:
                 print("[error]", repr(exc))
     finally:
