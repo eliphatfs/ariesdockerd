@@ -1,4 +1,5 @@
 import time
+import json
 import socket
 import logging
 import asyncio
@@ -109,13 +110,14 @@ def remove_container_task(ws: websockets.WebSocketServerProtocol, payload):
 def threaded_handler(func):
 
     async def _cmd(*args, **kwargs):
+        loop = asyncio.get_running_loop()
 
         def wrapping_func(*args, **kwargs):
             try:
                 r = func(*args, **kwargs)
-                asyncio.get_running_loop().call_soon_threadsafe(future.set_result, r)
+                loop.call_soon_threadsafe(future.set_result, r)
             except BaseException as exc:
-                asyncio.get_running_loop().call_soon_threadsafe(future.set_exception, exc)
+                loop.call_soon_threadsafe(future.set_exception, exc)
     
         future = asyncio.Future()
         thread = threading.Thread(target=wrapping_func, args=args, kwargs=kwargs)
@@ -157,17 +159,18 @@ async def bookkeep():
 
 
 async def one_pass():
+    ws = None
     try:
         ws = await websockets.connect(get_config().central_host)
         result = await client_serial(ws, 'auth', dict(token=issue(socket.gethostname(), 'daemon')))
-        assert result['code'] == 0, 'authentication failed'
-        asyncio.create_task(
-            client_serial(ws, 'daemon', dict()),
-            name='daemon-start'
-        ).add_done_callback(common_task_callback('daemon-start'))
+        assert result['code'] == 0, 'authentication failed: %s' % result['msg']
+        await ws.send(json.dumps(dict(ticket='daemon-special', cmd='daemon')))
         await command_handler(ws, dispatch)
     except Exception:
         logging.exception("Connection to Central is Lost")
+    finally:
+        if ws is not None:
+            await ws.close()
 
 
 async def main():
@@ -184,6 +187,7 @@ async def main():
         if interval > back + 5 and back > 2:
             back = 2
         logging.info("Reconnecting in %d", back)
+        await asyncio.sleep(back)
         back *= 2
 
 
