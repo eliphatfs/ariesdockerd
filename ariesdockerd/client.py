@@ -6,7 +6,7 @@ import tabulate
 import argparse
 import aioconsole
 import websockets
-from typing import Optional
+from typing import Optional, List
 from .protocol import client_serial
 
 
@@ -71,7 +71,8 @@ async def delete(container: str):
     return await client_serial(ws, 'delete', dict(container=container))
 
 
-async def run(name: str, image: str, cmd: str, n_gpus: int, n_jobs: Optional[int] = None):
+async def run(name: str, image: str, cmd: List[str], n_gpus: int, n_jobs: Optional[int] = None):
+    cmd = ' '.join(cmd)
     return await client_serial(ws, 'run', dict(name=name, image=image, cmd=cmd, n_gpus=n_gpus, n_jobs=n_jobs))
 
 
@@ -83,7 +84,7 @@ async def run_command(argv):
     pnodes.add_argument('-j', '--show_jobs', action='store_true')
 
     pps = subs.add_parser('ps')
-    pps.add_argument('-f', '--filt', default=None, type=str)
+    pps.add_argument('filt', nargs='?', default=None, type=str)
 
     plogs = subs.add_parser('logs')
     plogs.add_argument('container')
