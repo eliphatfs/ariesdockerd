@@ -116,7 +116,6 @@ async def ps_handler(ws: websockets.WebSocketServerProtocol, payload):
     if filt is not None:
         tyck(filt, str, 'filt')
     res = await daemon_broadcast('list_containers', dict(), cat_aggregate)
-    print(res)
     return dict(containers={
         k: v
         for k, v in res['containers'].items()
