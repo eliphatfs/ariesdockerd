@@ -50,8 +50,8 @@ async def ps(filt: Optional[str] = None):
     if r['code'] == 0:
         header = ['ID', 'Name', 'Status', 'User', 'GPUs']
         table = []
-        for k, v in r['containers']:
-            table.append([k, v['name'], v['status'], v['user'], ','.join('gpu_ids')])
+        for k, v in r['containers'].items():
+            table.append([k, v['name'], v['status'], v['user'], ','.join(map(str, v['gpu_ids']))])
         print(tabulate.tabulate(table, headers=header))
     return r
 
@@ -72,8 +72,7 @@ async def delete(container: str):
 
 
 async def run(name: str, image: str, cmd: List[str], n_gpus: int, n_jobs: Optional[int] = None):
-    cmd = ' '.join(cmd)
-    return await client_serial(ws, 'run', dict(name=name, image=image, cmd=cmd, n_gpus=n_gpus, n_jobs=n_jobs))
+    return await client_serial(ws, 'run', dict(name=name, image=image, exec=cmd, n_gpus=n_gpus, n_jobs=n_jobs))
 
 
 async def run_command(argv):
@@ -123,13 +122,23 @@ async def main():
         if auth['code'] != 0:
             print('[error] login failed:', auth['msg'])
         print('logged in as', auth['user'])
+        py = False
         while True:
             try:
                 cmd: str = await aioconsole.ainput('aries> ')
                 if cmd == 'q':
                     break
-                argv = shlex.split(cmd)
-                resp(await run_command(argv))
+                if cmd == 'py':
+                    py = True
+                    continue
+                if cmd == 'sh':
+                    py = False
+                    continue
+                if py:
+                    resp(await eval(cmd))
+                else:
+                    argv = shlex.split(cmd)
+                    resp(await run_command(argv))
             except Exception as exc:
                 print("[error]", repr(exc))
     finally:

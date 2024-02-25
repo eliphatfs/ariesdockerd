@@ -119,7 +119,7 @@ async def ps_handler(ws: websockets.WebSocketServerProtocol, payload):
     print(res)
     return dict(containers={
         k: v
-        for k, v in res['containers']
+        for k, v in res['containers'].items()
         if filt is None or filt in k or filt in v['name'] or filt in v['user']
     })
 
@@ -161,10 +161,10 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload):
     n_gpus = payload['n_gpus']
     name = payload['name']
     image = payload['image']
-    cmd = payload['cmd']
+    cmd = payload['exec']
     nodes = await collect_nodes(True)
     available = {}
-    for node, info in nodes:
+    for node, info in nodes.items():
         available[node] = info['free_gpu_ids']
         if n_jobs is None:
             if name in info['names']:
@@ -186,7 +186,7 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload):
                     name=container_name,
                     gpu_ids=gpus,
                     image=image,
-                    cmd=cmd,
+                    exec=cmd,
                     user=user
                 ))))
     await asyncio.wait(tasks)
@@ -216,7 +216,7 @@ async def handler(ws: websockets.WebSocketServerProtocol):
 
 async def main():
     global stop_signal
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     stop_signal = asyncio.Future()
     async with websockets.serve(handler, 'localhost', 23549):
         await stop_signal

@@ -47,11 +47,11 @@ def run_container_task(ws: websockets.WebSocketServerProtocol, payload):
     gpu_ids = payload['gpu_ids']
     name = payload['name']
     image = payload['image']
-    cmd = payload['cmd']
+    cmd = payload['exec']
     user = payload['user']
     tyck(name, str, 'name')
     tyck(image, str, 'image')
-    tyck(cmd, str, 'cmd')
+    tyck(cmd, list, 'exec')
     tyck(user, str, 'user')
     tyck(gpu_ids, list, 'gpu_ids')
     assert name not in names, 'container already exists: %s' % name
@@ -66,10 +66,10 @@ def get_logs_task(ws: websockets.WebSocketServerProtocol, payload):
     tyck(container, str, 'container')
     filt = [v for k, v in core.exit_store.items() if k.startswith(container) or v.name == container]
     if len(filt) == 1:
-        return dict(logs=filt[0].logs)
+        return dict(logs=filt[0].logs.decode(errors='replace'))
     elif len(filt) > 1:
         raise AriesError(15, 'container ambiguous: ' + str([v.name for v in filt]))
-    return dict(logs=core.logs(container))
+    return dict(logs=core.logs(container).decode(errors='replace'))
 
 
 def list_containers_task(ws: websockets.WebSocketServerProtocol, payload):
