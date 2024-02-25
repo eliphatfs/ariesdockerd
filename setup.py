@@ -31,6 +31,7 @@ setuptools.setup(
     install_requires=[
         'pyjwt',
         'docker',
+        'tabulate',
         'websockets',
         'aioconsole',
         'typing_extensions'
