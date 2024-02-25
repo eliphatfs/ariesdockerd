@@ -3,6 +3,7 @@ import json
 import logging
 import asyncio
 import websockets
+from typing import *
 from .error import AriesError
 
 
@@ -60,16 +61,22 @@ async def client_serial(ws: websockets.WebSocketCommonProtocol, cmd: str, args: 
     return execution
 
 
-# class AsyncClient(object):
-#     def __init__(self, ws: websockets.WebSocketCommonProtocol) -> None:
-#         self.ws = ws
-#         self.futures: Dict[str, asyncio.Future] = dict()
+class AsyncClient(object):
+    def __init__(self, ws: websockets.WebSocketCommonProtocol) -> None:
+        self.ws = ws
+        self.futures: Dict[str, asyncio.Future] = dict()
 
-#     async def listen(self):
-#         async for message in self.ws:
-#             payload = json.loads(message)
-#             ticket = payload['ticket']
-#             assert ticket in self.futures, ticket
-#             self.futures[ticket].set_result()
+    async def listen(self):
+        async for message in self.ws:
+            payload = json.loads(message)
+            ticket = payload['ticket']
+            assert ticket in self.futures, payload
+            self.futures[ticket].set_result(payload)
 
-#     async def issue(self, cmd: str, args: dict):
+    async def issue(self, cmd: str, args: dict):
+        ticket = str(uuid.uuid4())
+        self.futures[ticket] = asyncio.Future()
+        await self.ws.send(json.dumps(dict(ticket=ticket, cmd=cmd, **args)))
+        result = await self.futures[ticket]
+        self.futures.pop(ticket)
+        return result
