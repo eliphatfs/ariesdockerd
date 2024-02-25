@@ -6,7 +6,7 @@ import websockets
 from .protocol import client_serial
 
 
-def first_time_config():
+async def first_time_config():
     addr = input("Input Server Address> ")
     token = input("Input Token> ")
     os.makedirs(os.path.expanduser("~/.aries"), exist_ok=True)
@@ -21,10 +21,10 @@ def first_time_config():
 async def main():
     global ws
     if not os.path.exists(os.path.expanduser("~/.aries/config.json")):
-        first_time_config()
+        await first_time_config()
     with open(os.path.expanduser("~/.aries/config.json")) as fi:
         cfg = json.load(fi)
-    ws = await websockets.connect('wss://%s/ws' % cfg['addr'])
+    ws = await websockets.connect(cfg['addr'])
     await client_serial(ws, 'auth', dict(token=cfg['token']))
     while True:
         await eval(await aioconsole.ainput('aries> '))
