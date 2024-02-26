@@ -56,10 +56,14 @@ async def ps(filt: Optional[str] = None):
     return r
 
 
-async def logs(container: str):
+async def logs(container: str, output: str = None):
     r = await client_serial(ws, 'logs', dict(container=container))
     if r['code'] == 0:
-        print(r['logs'])
+        if output is None:
+            print(r['logs'])
+        else:
+            with open(output, "w") as fo:
+                print(r['logs'], file=fo)
     return r
 
 
@@ -95,6 +99,7 @@ async def run_command(argv):
 
     plogs = subs.add_parser('logs')
     plogs.add_argument('container')
+    plogs.add_argument('-o', '--output', default=None, type=str)
 
     pstop = subs.add_parser('stop')
     pstop.add_argument('container')
