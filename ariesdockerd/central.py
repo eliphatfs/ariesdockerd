@@ -73,7 +73,7 @@ def any_aggregate(results: List[dict]):
         if result['code'] == -1:
             last_return = result
     if last_return is not None:
-        raise AriesError(10, 'error from daemon: %d %s' % (result['code'], result['msg']))
+        raise AriesError(10, 'error from daemon: %d %s' % (last_return['code'], last_return['msg']))
     raise AriesError(10, 'error from daemon: %d %s' % (result['code'], result['msg']))
 
 

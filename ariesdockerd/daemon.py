@@ -76,10 +76,11 @@ def list_containers_task(ws: websockets.WebSocketServerProtocol, payload):
     data_dict = dict()
     for container, info in core.scan():
         data_dict[container.short_id] = dict(
-            gpu_ids=info['gpu_ids'], name=container.name, user=info['user'], status=container.status
+            gpu_ids=info['gpu_ids'], name=container.name, user=info['user'], status=container.status,
+            node=hostname
         )
     for short_id, es in core.exit_store.items():
-        data_dict[short_id] = dict(gpu_ids=[], user=es.user, status='finalized', name=es.name)
+        data_dict[short_id] = dict(gpu_ids=[], user=es.user, status='finalized', name=es.name, node=hostname)
     return dict(containers=data_dict)
 
 
@@ -159,10 +160,12 @@ async def bookkeep():
 
 
 async def one_pass():
+    global hostname
+    hostname = socket.gethostname()
     ws = None
     try:
         ws = await websockets.connect(get_config().central_host, max_size=2**24)
-        result = await client_serial(ws, 'auth', dict(token=issue(socket.gethostname(), 'daemon')))
+        result = await client_serial(ws, 'auth', dict(token=issue(hostname, 'daemon')))
         assert result['code'] == 0, 'authentication failed: %s' % result['msg']
         logging.info("Connected to Central Server")
         await ws.send(json.dumps(dict(ticket='daemon-special', cmd='daemon')))

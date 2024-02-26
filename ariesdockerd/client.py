@@ -48,10 +48,10 @@ async def nodes(show_jobs=False):
 async def ps(filt: Optional[str] = None):
     r = await client_serial(ws, 'ps', dict(filt=filt))
     if r['code'] == 0:
-        header = ['ID', 'Name', 'Status', 'User', 'GPUs']
+        header = ['ID', 'Name', 'Status', 'User', 'Node', 'GPUs']
         table = []
         for k, v in r['containers'].items():
-            table.append([k, v['name'], v['status'], v['user'], ','.join(map(str, v['gpu_ids']))])
+            table.append([k, v['name'], v['status'], v['user'], v['node'], ','.join(map(str, v['gpu_ids']))])
         print(tabulate.tabulate(table, headers=header))
     return r
 
