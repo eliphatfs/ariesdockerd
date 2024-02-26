@@ -66,10 +66,10 @@ def get_logs_task(ws: websockets.WebSocketServerProtocol, payload):
     tyck(container, str, 'container')
     filt = [v for k, v in core.exit_store.items() if k.startswith(container) or v.name == container]
     if len(filt) == 1:
-        return dict(logs=filt[0].logs.decode(errors='replace'))
+        return dict(logs=filt[0].logs.decode(errors='replace')[-2**23:])
     elif len(filt) > 1:
         raise AriesError(15, 'container ambiguous: ' + str([v.name for v in filt]))
-    return dict(logs=core.logs(container).decode(errors='replace'))
+    return dict(logs=core.logs(container).decode(errors='replace')[-2**23:])
 
 
 def list_containers_task(ws: websockets.WebSocketServerProtocol, payload):
@@ -161,7 +161,7 @@ async def bookkeep():
 async def one_pass():
     ws = None
     try:
-        ws = await websockets.connect(get_config().central_host)
+        ws = await websockets.connect(get_config().central_host, max_size=2**24)
         result = await client_serial(ws, 'auth', dict(token=issue(socket.gethostname(), 'daemon')))
         assert result['code'] == 0, 'authentication failed: %s' % result['msg']
         logging.info("Connected to Central Server")
