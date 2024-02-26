@@ -135,7 +135,7 @@ async def main():
         await first_time_config()
     with open(os.path.expanduser("~/.aries/config.json")) as fi:
         cfg = json.load(fi)
-    ws = await websockets.connect(cfg['addr'])
+    ws = await websockets.connect(cfg['addr'], max_size=2**26)
     try:
         auth = await client_serial(ws, 'auth', dict(token=cfg['token']))
         if auth['code'] != 0:
