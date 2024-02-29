@@ -159,6 +159,19 @@ async def bookkeep():
         await asyncio.wait([asyncio.sleep(10), stop_signal], return_when=asyncio.FIRST_COMPLETED)
 
 
+def run_mond():
+    retv = subprocess.call(['ariesmond'])
+    if 0 != retv:
+        logging.warning("ariesmond exit with code %d", retv)
+
+
+async def mond():
+    while not stop_signal.done():
+        if get_config().grafana_endpoint:
+            await threaded_handler(run_mond)()
+        await asyncio.wait([asyncio.sleep(300), stop_signal], return_when=asyncio.FIRST_COMPLETED)
+
+
 async def one_pass():
     global hostname
     hostname = socket.gethostname()
@@ -185,12 +198,15 @@ async def main():
     core.set_up()
     asyncio.create_task(cleanup()).add_done_callback(common_task_callback('daemon-clean-up'))
     asyncio.create_task(bookkeep()).add_done_callback(common_task_callback('daemon-bookkeep'))
+    asyncio.create_task(mond()).add_done_callback(common_task_callback('daemon-mond'))
     while not stop_signal.done():
         s = time.time()
         await one_pass()
         interval = time.time() - s
         if interval > back + 5 and back > 2:
             back = 2
+        if back > 900:
+            back = 900
         logging.info("Reconnecting in %d", back)
         await asyncio.sleep(back)
         back *= 2

@@ -10,6 +10,9 @@ class Config:
     jwt_key: str
     central_host: str
     mount_paths: List[str]
+    grafana_endpoint: str
+    grafana_userid: int
+    grafana_key: str
 
 
 @functools.lru_cache(maxsize=None)

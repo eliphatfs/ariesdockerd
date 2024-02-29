@@ -30,6 +30,8 @@ setuptools.setup(
     python_requires='~=3.7',
     install_requires=[
         'pyjwt',
+        'psutil',
+        'gputil',
         'docker',
         'tabulate',
         'websockets',
@@ -39,6 +41,7 @@ setuptools.setup(
     entry_points=dict(
         console_scripts=[
             "aries=ariesdockerd.client:sync_main",
+            "ariesmond=ariesdockerd.metrics:main",
             "ariesdockerd=ariesdockerd.daemon:sync_main",
             "ariescentral=ariesdockerd.central:sync_main",
             "aries-auth-issue-token=ariesdockerd.auth:issue_token_main",

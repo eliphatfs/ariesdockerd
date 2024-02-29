@@ -1,5 +1,8 @@
 {
     "central_host": "wss://example.com/path",
     "jwt_key": "eBx87S0lS1lCEywyqDl81iPeTnTm6RF3",
-    "mount_paths": ["/:/host"]
+    "mount_paths": ["/:/host"],
+    "grafana_endpoint": "",
+    "grafana_userid": 0,
+    "grafana_key": ""
 }
