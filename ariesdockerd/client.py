@@ -4,6 +4,7 @@ import shlex
 import asyncio
 import tabulate
 import argparse
+import readline
 import aioconsole
 import websockets
 from typing import Optional, List
