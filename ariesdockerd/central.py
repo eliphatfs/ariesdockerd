@@ -3,6 +3,7 @@ import logging
 import asyncio
 import websockets
 from typing import *
+from collections import namedtuple
 from .auth import run_auth
 from .error import AriesError
 from .protocol import command_handler, NoResponse, AsyncClient
@@ -47,7 +48,15 @@ async def daemon_handler(ws: websockets.WebSocketServerProtocol, payload):
     check_auth(ws, 'daemon')
     ac = AsyncClient(ws)
     daemons.add(ac)
-    state_store[ws].callback = lambda x: ac.result(x)
+
+    def daemon_callback(x):
+        payload: dict = json.loads(x)
+        if payload.get('cmd') == 'tcprecv':
+            asyncio.create_task(tcprecv_handler(payload))
+        else:
+            ac.result(payload)
+
+    state_store[ws].callback = daemon_callback
     try:
         await ws.wait_closed()
     except Exception:
@@ -234,6 +243,85 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload):
     return cat_aggregate([task.result() for task in tasks])
 
 
+tcp_routes: Dict[str, list] = dict()
+CLIENT, DAEMON, MSG_ID, WAITING = 0, 1, 2, 3
+
+
+async def tcprecv_handler(payload):
+    client = payload['client']
+    tcp = tcp_routes.get(client)
+    if tcp is None:
+        return
+    p = payload['p']
+
+    tcp[WAITING] += 1
+    if tcp[WAITING] == 8:
+        await tcp[DAEMON].issue('tcpflowpause', dict(client=client))
+    
+    while tcp[MSG_ID] != p:
+        await asyncio.sleep(0)
+    await tcp[CLIENT].send(json.dumps(payload))
+    tcp[MSG_ID] += 1
+
+    tcp[WAITING] -= 1
+    if tcp[WAITING] == 4:
+        await tcp[DAEMON].issue('tcpflowresume', dict(client=client))
+
+
+async def tcpconn_handler(ws: websockets.WebSocketServerProtocol, payload):
+    check_auth(ws)
+    ticket = payload['ticket']
+    nodes = await collect_nodes(False)
+    container = payload['container']
+    tyck(container, str, 'container')
+    port = payload['port']
+    tyck(port, int, 'port')
+    for snode, info in nodes.items():
+        if container in info['names']:
+            for daemon in daemons:
+                node = state_store[daemon.ws].auth_name
+                if snode == node:
+                    res = await daemon.issue('tcpconn', dict(client=ticket, container=container, port=port))
+                    tcp_routes[ticket] = [ws, daemon, 0, 0]
+                    res.pop('ticket')
+                    return res
+            raise NoResponse
+    else:
+        raise AriesError(17, "container `%s` not found" % container)
+
+
+async def tcpsend_handler(ws: websockets.WebSocketServerProtocol, payload):
+    check_auth(ws)
+    client = payload['client']
+    tyck(client, str, 'client')
+    p = payload['p']
+    tyck(p, int, 'p')
+    for _ in range(30):
+        if client in tcp_routes:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        if client not in tcp_routes:
+            raise AriesError(18, "tcp connection `%s` not found or connection timeout" % client)
+    await tcp_routes[client][DAEMON].ws.send(json.dumps(payload))
+    raise NoResponse
+
+
+async def tcpstop_handler(ws: websockets.WebSocketServerProtocol, payload):
+    check_auth(ws)
+    client = payload['client']
+    tyck(client, str, 'client')
+    p = payload['p']
+    tyck(p, int, 'p')
+    tcp = tcp_routes.pop(client, None)
+    if tcp is None:
+        raise AriesError(18, "tcp connection `%s` not found" % client)
+    daemon: AsyncClient = tcp[DAEMON]
+    res = await daemon.issue('tcpstop', dict(client=client, p=p))
+    res.pop('ticket')
+    return res
+
+
 dispatch = dict(
     auth=auth_handler,
     daemon=daemon_handler,
@@ -244,7 +332,10 @@ dispatch = dict(
     jdelete=jremove_handler,
     ps=ps_handler,
     nodes=nodes_handler,
-    run=run_handler
+    run=run_handler,
+    tcpconn=tcpconn_handler,
+    tcpsend=tcpsend_handler,
+    tcpstop=tcpstop_handler,
 )
 
 
@@ -258,10 +349,12 @@ async def handler(ws: websockets.WebSocketServerProtocol):
 
 
 async def main():
+    import psutil
+    print("I am", psutil.Process().pid)
     global stop_signal
     logging.basicConfig(level=logging.INFO)
     stop_signal = asyncio.Future()
-    async with websockets.serve(handler, '127.0.0.1', 23549, max_size=2**25):
+    async with websockets.serve(handler, '127.0.0.1', 23549, max_size=2**25, compression=None):
         await stop_signal
 
 

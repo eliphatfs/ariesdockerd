@@ -1,14 +1,21 @@
 import os
+import uuid
 import json
 import shlex
+import signal
+import base64
 import asyncio
 import tabulate
 import argparse
 import readline
 import aioconsole
 import websockets
-from typing import Optional, List
+from typing import Optional, List, Dict
 from .protocol import client_serial
+
+
+class ResetSignal(Exception):
+    pass
 
 
 async def first_time_config():
@@ -88,6 +95,55 @@ async def run(name: str, image: str, cmd: List[str], n_gpus: int, n_jobs: Option
     return await client_serial(ws, 'run', dict(name=name, image=image, exec=cmd, n_gpus=n_gpus, n_jobs=n_jobs))
 
 
+async def portfwd(container: str, port: str):
+    clients: Dict[str, asyncio.StreamWriter] = {}
+    if ':' in port:
+        remoteport, localport = map(int, port.split(':'))
+    else:
+        remoteport, localport = int(port), int(port)
+
+    async def portfwd_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        print("[info] got connection on port", localport)
+        ticket = str(uuid.uuid4())
+        clients[ticket] = writer
+        await ws.send(json.dumps(dict(ticket=ticket, cmd='tcpconn', container=container, port=remoteport)))
+        last_write = None
+        p = 0
+        while True:
+            try:
+                nxt = await reader.read(16384)
+            except Exception as exc:
+                print("[warn] got exception reading, ending connection:", repr(exc))
+                break
+            if not len(nxt):
+                break
+            enc = base64.b64encode(nxt).decode('ascii')
+            packet = json.dumps(dict(ticket=str(uuid.uuid4()), cmd='tcpsend', client=ticket, d=enc, p=p))
+            p += 1
+            if last_write is not None:
+                await last_write
+            last_write = asyncio.create_task(ws.send(packet))
+        del clients[ticket]
+        await ws.send(json.dumps(dict(ticket=str(uuid.uuid4()), cmd='tcpstop', client=ticket, p=p)))
+        writer.close()
+
+    server = await asyncio.start_server(portfwd_client, host='127.0.0.1', port=localport)
+    print("[info] serving on port", localport)
+    async for message in ws:
+        payload = json.loads(message)
+        if payload.get('code', 0) != 0:
+            print("[error]", payload['msg'])
+        elif payload.get('cmd') == 'tcprecv':
+            if payload['client'] in clients:
+                clients[payload['client']].write(base64.b64decode(payload['d']))
+        elif 'msg' in payload:
+            print("[info]", payload['msg'])
+        else:
+            print("[info]", payload)
+    server.close()
+    await server.wait_closed()
+
+
 async def run_command(argv):
     argp = argparse.ArgumentParser()
     subs = argp.add_subparsers(dest='command')
@@ -114,6 +170,10 @@ async def run_command(argv):
     pdelete = subs.add_parser('jdelete')
     pdelete.add_argument('job')
 
+    pfwd = subs.add_parser('portfwd')
+    pfwd.add_argument('container')
+    pfwd.add_argument('port')
+
     prun = subs.add_parser('run')
     prun.add_argument('-j', '--n_jobs', default=None, type=int)
     prun.add_argument('-g', '--n_gpus', default=1, type=int)
@@ -132,6 +192,13 @@ async def run_command(argv):
 
 async def main():
     global ws
+    is_input = False
+
+    def interrupted(signum, frame):
+        if not is_input:
+            signal.default_int_handler(signum, frame)
+
+    signal.signal(signal.SIGINT, interrupted)
     if not os.path.exists(os.path.expanduser("~/.aries/config.json")):
         await first_time_config()
     with open(os.path.expanduser("~/.aries/config.json")) as fi:
@@ -146,7 +213,12 @@ async def main():
         py = False
         while True:
             try:
-                cmd: str = await aioconsole.ainput('aries> ')
+                is_input = True
+                try:
+                    cmd: str = await aioconsole.ainput('aries> ')
+                except EOFError:
+                    raise ResetSignal("Got EOF. Use 'q' command instead of Ctrl-C if you want to exit.")
+                is_input = False
                 if cmd == 'q':
                     break
                 if cmd == 'py':
@@ -161,6 +233,7 @@ async def main():
                     argv = shlex.split(cmd)
                     resp(await run_command(argv))
             except Exception as exc:
+                is_input = False
                 print("[error]", repr(exc))
     finally:
         await ws.close()

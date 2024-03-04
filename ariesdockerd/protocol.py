@@ -21,7 +21,10 @@ async def process_command(ws: websockets.WebSocketCommonProtocol, dispatch: dict
             if cmd not in dispatch:
                 raise AriesError(1, "unknown command `%s`" % cmd)
             result: dict = await dispatch[cmd](ws, payload)
-            await ws.send(json.dumps(dict(ticket=ticket, code=0, **result)))
+            if 'code' in result:
+                await ws.send(json.dumps(dict(ticket=ticket, **result)))
+            else:
+                await ws.send(json.dumps(dict(ticket=ticket, code=0, **result)))
         except NoResponse:
             return
         except AriesError as exc:
@@ -77,15 +80,15 @@ class AsyncClient(object):
         self.ws = ws
         self.futures: Dict[str, asyncio.Future] = dict()
 
-    def result(self, message):
-        payload = json.loads(message)
+    def result(self, payload):
         ticket = payload['ticket']
         assert ticket in self.futures, payload
         self.futures[ticket].set_result(payload)
 
     async def listen(self):
         async for message in self.ws:
-            self.result(message)
+            payload = json.loads(message)
+            self.result(payload)
 
     async def issue(self, cmd: str, args: dict):
         ticket = str(uuid.uuid4())

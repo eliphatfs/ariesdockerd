@@ -1,6 +1,7 @@
 import time
 import json
 import socket
+import base64
 import logging
 import asyncio
 import datetime
@@ -11,7 +12,7 @@ import websockets
 from .auth import issue
 from .error import AriesError
 from .config import get_config
-from .protocol import command_handler, client_serial, common_task_callback
+from .protocol import command_handler, client_serial, common_task_callback, NoResponse
 from .executor import Executor
 
 
@@ -108,6 +109,94 @@ def remove_container_task(ws: websockets.WebSocketServerProtocol, payload):
     return dict()
 
 
+tcp_connections = dict()
+READER, WRITER, MSG_ID, FLOWCONTROL = 0, 1, 2, 3
+
+
+async def tcpalive(client):
+    if client not in tcp_connections:
+        return
+    tcp = tcp_connections[client]
+    while True:
+        msg_id = tcp[MSG_ID]
+        await asyncio.sleep(300)
+        if client not in tcp_connections:
+            break
+        msg_id2 = tcp[MSG_ID]
+        if msg_id == msg_id2:
+            return tcp_connections.pop(client)
+
+
+async def tcprecv_handler(ws: websockets.WebSocketServerProtocol, client: str, reader: asyncio.StreamReader):
+    p = 0
+    last_write = None
+    tcp = tcp_connections[client]
+    while True:
+        nxt = await reader.read(16384)
+        if not len(nxt):
+            asyncio.create_task(tcpalive(client))
+            break
+        enc = base64.b64encode(nxt).decode('ascii')
+        packet = json.dumps(dict(cmd='tcprecv', client=client, d=enc, p=p))
+        p += 1
+        if last_write is not None:
+            await last_write
+        if tcp[FLOWCONTROL] is not None:
+            await tcp[FLOWCONTROL]
+        last_write = asyncio.create_task(ws.send(packet))
+
+
+async def tcpconn_handler(ws: websockets.WebSocketServerProtocol, payload):
+    client = payload['client']
+    reader, writer = await asyncio.open_connection("127.0.0.1", payload['port'])
+    asyncio.create_task(tcprecv_handler(ws, client, reader))
+    tcp_connections[client] = [reader, writer, 0, None]
+    return dict(msg='tcp connection handled')
+
+
+async def tcpsend_handler(ws: websockets.WebSocketServerProtocol, payload):
+    client = payload['client']
+    tcp = tcp_connections[client]
+    while tcp[MSG_ID] != payload['p']:
+        await asyncio.sleep(0)
+    writer: asyncio.StreamWriter = tcp[WRITER]
+    writer.write(base64.b64decode(payload['d']))
+    tcp[MSG_ID] += 1
+    raise NoResponse
+
+
+async def tcpstop_handler(ws: websockets.WebSocketServerProtocol, payload):
+    client = payload['client']
+    tcp = tcp_connections[client]
+    while tcp[MSG_ID] != payload['p']:
+        await asyncio.sleep(0)
+    writer: asyncio.StreamWriter = tcp[WRITER]
+    await writer.drain()
+    tcp_connections.pop(client)
+    writer.close()
+    await writer.wait_closed()
+    return dict(msg='tcp connection closed')
+
+
+async def tcpflowpause_handler(ws: websockets.WebSocketServerProtocol, payload):
+    client = payload['client']
+    tcp = tcp_connections[client]
+    if tcp[FLOWCONTROL] is None:
+        tcp[FLOWCONTROL] = asyncio.Future()
+        return dict(changed=True)
+    return dict(changed=False)
+
+
+async def tcpflowresume_handler(ws: websockets.WebSocketServerProtocol, payload):
+    client = payload['client']
+    tcp = tcp_connections[client]
+    if tcp[FLOWCONTROL] is None:
+        return dict(changed=False)
+    tcp[FLOWCONTROL].set_result(None)
+    tcp[FLOWCONTROL] = None
+    return dict(changed=True)
+
+
 def threaded_handler(func):
 
     async def _cmd(*args, **kwargs):
@@ -134,7 +223,12 @@ dispatch = dict(
     list_containers=threaded_handler(list_containers_task),
     get_logs=threaded_handler(get_logs_task),
     stop_container=threaded_handler(stop_container_task),
-    remove_container=threaded_handler(remove_container_task)
+    remove_container=threaded_handler(remove_container_task),
+    tcpconn=tcpconn_handler,
+    tcpsend=tcpsend_handler,
+    tcpstop=tcpstop_handler,
+    tcpflowpause=tcpflowpause_handler,
+    tcpflowresume=tcpflowresume_handler,
 )
 
 
@@ -191,6 +285,8 @@ async def one_pass():
 
 
 async def main():
+    import psutil
+    print("I am", psutil.Process().pid)
     global stop_signal
     logging.basicConfig(level=logging.INFO)
     stop_signal = asyncio.Future()
