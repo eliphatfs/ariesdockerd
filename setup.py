@@ -35,7 +35,7 @@ setuptools.setup(
         'docker',
         'tabulate',
         'websockets',
-        'aioconsole',
+        'aiocmd==0.1.5',
         'typing_extensions'
     ],
     entry_points=dict(

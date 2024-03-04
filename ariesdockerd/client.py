@@ -1,15 +1,12 @@
 import os
 import uuid
 import json
-import shlex
-import signal
 import base64
 import asyncio
 import tabulate
 import argparse
-import readline
-import aioconsole
 import websockets
+from aiocmd import aiocmd
 from typing import Optional, List, Dict
 from .protocol import client_serial
 
@@ -19,8 +16,8 @@ class ResetSignal(Exception):
 
 
 async def first_time_config():
-    addr = await aioconsole.ainput("Input Server Address> ")
-    token = await aioconsole.ainput("Input Token> ")
+    addr = input("Input Server Address> ")
+    token = input("Input Token> ")
     os.makedirs(os.path.expanduser("~/.aries"), exist_ok=True)
     with open(os.path.expanduser("~/.aries/config.json"), "w") as fo:
         json.dump(dict(
@@ -190,15 +187,32 @@ async def run_command(argv):
     return await (globals()[cmd])(**kw)
 
 
+class AriesShell(aiocmd.PromptToolkitCmd):
+    prompt = "aries> "
+
+    @property
+    def command_list(self):
+        return [
+            'nodes', 'ps', 'logs',
+            'stop', 'jstop',
+            'delete', 'jdelete',
+            'portfwd',
+            'run',
+            'q',
+            '?', 'help'
+        ]
+
+    async def _run_single_command(self, command, args):
+        if command == 'q':
+            raise aiocmd.ExitPromptException
+        try:
+            resp(await run_command([command] + args))
+        except Exception as exc:
+            print("[error]", repr(exc))
+
+
 async def main():
     global ws
-    is_input = False
-
-    def interrupted(signum, frame):
-        if not is_input:
-            signal.default_int_handler(signum, frame)
-
-    signal.signal(signal.SIGINT, interrupted)
     if not os.path.exists(os.path.expanduser("~/.aries/config.json")):
         await first_time_config()
     with open(os.path.expanduser("~/.aries/config.json")) as fi:
@@ -210,31 +224,7 @@ async def main():
             print('[error] login failed:', auth['msg'])
         else:
             print('logged in as', auth['user'])
-        py = False
-        while True:
-            try:
-                is_input = True
-                try:
-                    cmd: str = await aioconsole.ainput('aries> ')
-                except EOFError:
-                    raise ResetSignal("Got EOF. Use 'q' command instead of Ctrl-C if you want to exit.")
-                is_input = False
-                if cmd == 'q':
-                    break
-                if cmd == 'py':
-                    py = True
-                    continue
-                if cmd == 'sh':
-                    py = False
-                    continue
-                if py:
-                    resp(await eval(cmd))
-                else:
-                    argv = shlex.split(cmd)
-                    resp(await run_command(argv))
-            except Exception as exc:
-                is_input = False
-                print("[error]", repr(exc))
+        await AriesShell().run()
     finally:
         await ws.close()
 
