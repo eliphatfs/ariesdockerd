@@ -1,13 +1,18 @@
 import os
+import sys
 import uuid
 import json
 import base64
+import signal
 import asyncio
-import tabulate
 import argparse
+import tabulate
 import websockets
 from aiocmd import aiocmd
 from typing import Optional, List, Dict
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.patch_stdout import patch_stdout
 from .protocol import client_serial
 
 
@@ -218,6 +223,25 @@ class AriesShell(aiocmd.PromptToolkitCmd):
             'q',
             '?', 'help'
         ]
+
+    def _interrupt_handler(self, event):
+        print(self.prompt + event.cli.current_buffer.text + "^C")
+        event.cli.current_buffer.text = ""
+
+    async def run(self):
+        if self._ignore_sigint and sys.platform != "win32":
+            asyncio.get_event_loop().add_signal_handler(signal.SIGINT, self._sigint_handler)
+        self.session = PromptSession(
+            enable_history_search=True, key_bindings=self._get_bindings(),
+            history=FileHistory(os.path.expanduser("~/.aries/history"))
+        )
+        try:
+            with patch_stdout():
+                await self._run_prompt_forever()
+        finally:
+            if self._ignore_sigint and sys.platform != "win32":
+                asyncio.get_event_loop().remove_signal_handler(signal.SIGINT)
+            self._on_close()
 
     async def _run_single_command(self, command, args):
         if command == 'q':
