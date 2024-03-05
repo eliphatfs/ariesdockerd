@@ -13,7 +13,7 @@ def schedule(available: Dict[Any, List[int]], njobs: int, ngpus: int):
     if njobs is None:
         njobs = 1
     if ngpus == 0:
-        nodes = sorted(available.keys(), key=lambda x: len(available[x]), reverse=True)
+        nodes = sorted(available.keys(), key=lambda x: (len(available[x]), random.random()), reverse=True)
         for i in range(njobs):
             sched.append((nodes[i % len(nodes)], []))
         return sched
