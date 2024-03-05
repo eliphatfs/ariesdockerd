@@ -2,6 +2,7 @@ import os
 import sys
 import uuid
 import json
+import shlex
 import base64
 import signal
 import asyncio
@@ -160,6 +161,17 @@ async def reconnect():
     return auth
 
 
+async def source(file):
+    with open(file) as fi:
+        for cmd in fi:
+            if cmd.startswith('#'):
+                continue
+            if not cmd.strip():
+                continue
+            resp(await run_command(shlex.split(cmd)))
+    return dict(code=0)
+
+
 async def run_command(argv):
     argp = argparse.ArgumentParser()
     subs = argp.add_subparsers(dest='command')
@@ -192,6 +204,9 @@ async def run_command(argv):
     pfwd.add_argument('container')
     pfwd.add_argument('port')
 
+    psource = subs.add_parser('source')
+    psource.add_argument('file')
+
     prun = subs.add_parser('run')
     prun.add_argument('-j', '--n_jobs', default=None, type=int)
     prun.add_argument('-g', '--n_gpus', default=1, type=int)
@@ -219,7 +234,7 @@ class AriesShell(aiocmd.PromptToolkitCmd):
             'stop', 'jstop',
             'delete', 'jdelete',
             'portfwd', 'reconnect',
-            'run',
+            'run', 'source',
             'q',
             '?', 'help'
         ]
