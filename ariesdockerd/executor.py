@@ -48,7 +48,7 @@ class Executor(object):
     def stop(self, container: str):
         return self.get_managed(container).stop()
 
-    def run(self, name: str, image: str, cmd: Union[str, List[str]], gpu_ids: List[int], user: str):
+    def run(self, name: str, image: str, cmd: Union[str, List[str]], gpu_ids: List[int], user: str, env: list):
         gpu_id_string = ','.join(map(str, gpu_ids))
         bookkeep_info = dict(gpu_ids=gpu_ids, user=user)
         token = jwt.encode(bookkeep_info, get_config().jwt_key, "HS256")
@@ -63,7 +63,8 @@ class Executor(object):
             shm_size='%dG' % (4 * len(gpu_ids)),
             network_mode='host',
             volumes=self.mount_paths,
-            labels={"ariesmanaged": token}
+            labels={"ariesmanaged": token},
+            environment=env
         ).short_id
 
     def logs(self, container: str):

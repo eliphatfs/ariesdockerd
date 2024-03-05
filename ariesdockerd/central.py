@@ -212,6 +212,7 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload):
     name = payload['name']
     image = payload['image']
     cmd = payload['exec']
+    env = payload.get('env', [])
     nodes = await collect_nodes(True)
     available = {}
     for node, info in nodes.items():
@@ -237,7 +238,8 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload):
                     gpu_ids=gpus,
                     image=image,
                     exec=cmd,
-                    user=user
+                    user=user,
+                    env=env
                 ))))
     await asyncio.wait(tasks)
     return cat_aggregate([task.result() for task in tasks])
