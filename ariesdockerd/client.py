@@ -141,6 +141,20 @@ async def portfwd(container: str, port: str):
     await server.wait_closed()
 
 
+async def reconnect():
+    global ws
+    with open(os.path.expanduser("~/.aries/config.json")) as fi:
+        cfg = json.load(fi)
+    try:
+        if not ws.closed:
+            await ws.close()
+    except Exception as exc:
+        print('[warn] error closing old connection', repr(exc))
+    ws = await websockets.connect(cfg['addr'], max_size=2**26)
+    auth = await client_serial(ws, 'auth', dict(token=cfg['token']))
+    return auth
+
+
 async def run_command(argv):
     argp = argparse.ArgumentParser()
     subs = argp.add_subparsers(dest='command')
@@ -150,6 +164,8 @@ async def run_command(argv):
 
     pps = subs.add_parser('ps')
     pps.add_argument('filt', nargs='?', default=None, type=str)
+
+    subs.add_parser('reconnect')
 
     plogs = subs.add_parser('logs')
     plogs.add_argument('container')
@@ -196,7 +212,7 @@ class AriesShell(aiocmd.PromptToolkitCmd):
             'nodes', 'ps', 'logs',
             'stop', 'jstop',
             'delete', 'jdelete',
-            'portfwd',
+            'portfwd', 'reconnect',
             'run',
             'q',
             '?', 'help'
