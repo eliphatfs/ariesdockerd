@@ -17,6 +17,9 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from .protocol import client_serial
 
 
+interrupt_callbacks = []
+
+
 class ResetSignal(Exception):
     pass
 
@@ -131,20 +134,26 @@ async def portfwd(container: str, port: str):
         writer.close()
 
     server = await asyncio.start_server(portfwd_client, host='127.0.0.1', port=localport)
-    print("[info] serving on port", localport)
-    async for message in ws:
-        payload = json.loads(message)
-        if payload.get('code', 0) != 0:
-            print("[error]", payload['msg'])
-        elif payload.get('cmd') == 'tcprecv':
-            if payload['client'] in clients:
-                clients[payload['client']].write(base64.b64decode(payload['d']))
-        elif 'msg' in payload:
-            print("[info]", payload['msg'])
-        else:
-            print("[info]", payload)
-    server.close()
-    await server.wait_closed()
+    callback = lambda: ws.close()
+    interrupt_callbacks.append(callback)
+    try:
+        print("[info] serving on port", localport)
+        async for message in ws:
+            payload = json.loads(message)
+            if payload.get('code', 0) != 0:
+                print("[error]", payload['msg'])
+            elif payload.get('cmd') == 'tcprecv':
+                if payload['client'] in clients:
+                    clients[payload['client']].write(base64.b64decode(payload['d']))
+            elif 'msg' in payload:
+                print("[info]", payload['msg'])
+            else:
+                print("[info]", payload)
+    finally:
+        interrupt_callbacks.remove(callback)
+        asyncio.create_task(reconnect())
+        server.close()
+        await server.wait_closed()
 
 
 async def reconnect():
@@ -261,6 +270,9 @@ class AriesShell(aiocmd.PromptToolkitCmd):
     async def _run_single_command(self, command, args):
         if command == 'q':
             raise aiocmd.ExitPromptException
+        if ws.closed:
+            print("Connection to server lost. Reconnecting...")
+            resp(await reconnect())
         try:
             resp(await run_command([command] + args))
         except Exception as exc:
