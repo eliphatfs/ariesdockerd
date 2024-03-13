@@ -60,7 +60,7 @@ class Executor(object):
             devices=self.shared_devices,
             device_requests=[DeviceRequest(device_ids=[gpu_id_string], capabilities=[['gpu']])],
             ulimits=[Ulimit(name='memlock', soft=1048576000, hard=1048576000)],
-            shm_size='%dG' % (4 * len(gpu_ids)),
+            shm_size='%dG' % (32 * len(gpu_ids) + 16),
             network_mode='host',
             volumes=self.mount_paths,
             labels={"ariesmanaged": token},
