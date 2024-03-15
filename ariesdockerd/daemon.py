@@ -28,14 +28,17 @@ def node_info_task(ws: websockets.WebSocketServerProtocol, payload):
     include_finalized = payload['include_finalized']
     gpus = set(range(total_gpus()))
     names = set()
+    ids = set()
     for container, info in core.scan():
         names.add(container.name)
+        ids.add(container.short_id)
         for gpu in info['gpu_ids']:
             gpus.remove(gpu)
     if include_finalized:
-        for v in core.exit_store.values():
+        for k, v in core.exit_store.items():
             names.add(v.name)
-    return dict(free_gpu_ids=sorted(gpus), names=sorted(names))
+            ids.add(k)
+    return dict(free_gpu_ids=sorted(gpus), names=sorted(names), ids=sorted(ids))
 
 
 def tyck(obj, ty, name):
