@@ -3,7 +3,7 @@ import logging
 import asyncio
 import websockets
 from typing import *
-from collections import namedtuple
+from collections import Counter
 from .auth import run_auth
 from .error import AriesError
 from .protocol import command_handler, NoResponse, AsyncClient
@@ -73,17 +73,15 @@ def tyck(obj, ty, name):
     
 
 def any_aggregate(results: List[dict]):
-    last_return = None
+    errors = Counter()
     for result in results:
         if result['code'] == 0:
             result.pop('code')
             result.pop('ticket')
             return result
-        if result['code'] == -1:
-            last_return = result
-    if last_return is not None:
-        raise AriesError(10, 'error from daemon: %d %s' % (last_return['code'], last_return['msg']))
-    raise AriesError(10, 'error from daemon: %d %s' % (result['code'], result['msg']))
+        errors.update([(result['code'], result['msg'])])
+    code, msg = errors.most_common()[-1][0]
+    raise AriesError(10, 'error from daemon: %d %s' % (code, msg))
 
 
 def cat_aggregate(results: List[dict]):
@@ -279,7 +277,7 @@ async def tcpconn_handler(ws: websockets.WebSocketServerProtocol, payload):
     port = payload['port']
     tyck(port, int, 'port')
     for snode, info in nodes.items():
-        if container in info['names']:
+        if container in info['names'] or container in info['ids']:
             for daemon in daemons:
                 node = state_store[daemon.ws].auth_name
                 if snode == node:
