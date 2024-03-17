@@ -85,6 +85,10 @@ async def stop(container: str):
     return await client_serial(ws, 'stop', dict(container=container))
 
 
+async def kill(container: str):
+    return await client_serial(ws, 'kill', dict(container=container))
+
+
 async def jstop(job: str):
     return await client_serial(ws, 'jstop', dict(job=job))
 
@@ -200,6 +204,9 @@ async def run_command(argv):
     pstop = subs.add_parser('stop')
     pstop.add_argument('container')
 
+    pstop = subs.add_parser('kill')
+    pstop.add_argument('container')
+
     pstop = subs.add_parser('jstop')
     pstop.add_argument('job')
 
@@ -240,7 +247,7 @@ class AriesShell(aiocmd.PromptToolkitCmd):
     def command_list(self):
         return [
             'nodes', 'ps', 'logs',
-            'stop', 'jstop',
+            'stop', 'kill', 'jstop',
             'delete', 'jdelete',
             'portfwd', 'reconnect',
             'run', 'source',

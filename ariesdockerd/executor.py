@@ -2,6 +2,7 @@ import os
 import jwt
 import time
 import docker
+import psutil
 import logging
 from typing import *
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ class Executor(object):
         self.shared_devices: List[str] = []
         self.mount_paths = get_config().mount_paths
         self.exit_store: Dict[str, ContainerEphemeral] = dict()
+        self.mark_removed = set()
 
     def set_up(self):
         if os.path.exists('/dev/infiniband'):
@@ -72,14 +74,39 @@ class Executor(object):
 
     def stat(self, container: str):
         return self.get_managed(container).status
+    
+    def kill(self, container: str):
+        c = self.get_managed(container)
+        self.mark_removed.add(c.short_id)
+        errors = []
+        for _ in range(2):
+            top_results = c.top()
+            pids = [x[top_results['Titles'].index('PID')] for x in top_results['Processes']]
+            for pid in pids:
+                try:
+                    psutil.Process(int(pid)).kill()
+                except psutil.NoSuchProcess:
+                    pass
+                except Exception as exc:
+                    errors.append(repr(exc))
+            time.sleep(1)
+        try:
+            c.remove(force=True)
+        except Exception as exc:
+            errors.append(repr(exc))
+        if len(errors):
+            raise ValueError('\n'.join(errors))
 
     def scan(self):
         valid: List[Tuple[Container, dict]] = []
         for container in self.client.containers.list(all=True):
+            container: Container
             if 'ariesmanaged' in container.labels:
                 token = container.labels['ariesmanaged']
                 try:
                     info = jwt.decode(token, get_config().jwt_key, algorithms=["HS256"])
+                    if container.short_id in self.mark_removed:
+                        info['removed'] = True
                     valid.append((container, info))
                 except jwt.InvalidTokenError:
                     logging.warning("Invalid Token Found in `ariesmanaged`: %s", token)

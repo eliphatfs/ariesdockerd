@@ -137,6 +137,13 @@ async def stop_handler(ws: websockets.WebSocketServerProtocol, payload):
     return await daemon_broadcast('stop_container', dict(container=container), any_aggregate)
 
 
+async def kill_handler(ws: websockets.WebSocketServerProtocol, payload):
+    check_auth(ws)
+    container = payload['container']
+    tyck(container, str, 'container')
+    return await daemon_broadcast('kill_container', dict(container=container), any_aggregate)
+
+
 async def jstop_handler(ws: websockets.WebSocketServerProtocol, payload):
     check_auth(ws)
     job = payload['job']
@@ -327,6 +334,7 @@ dispatch = dict(
     daemon=daemon_handler,
     logs=logs_handler,
     stop=stop_handler,
+    kill=kill_handler,
     jstop=jstop_handler,
     delete=remove_handler,
     jdelete=jremove_handler,

@@ -32,8 +32,9 @@ def node_info_task(ws: websockets.WebSocketServerProtocol, payload):
     for container, info in core.scan():
         names.add(container.name)
         ids.add(container.short_id)
-        for gpu in info['gpu_ids']:
-            gpus.remove(gpu)
+        if container.status != 'dead' and not info.get('removed'):
+            for gpu in info['gpu_ids']:
+                gpus.remove(gpu)
     if include_finalized:
         for k, v in core.exit_store.items():
             names.add(v.name)
@@ -81,8 +82,9 @@ def get_logs_task(ws: websockets.WebSocketServerProtocol, payload):
 def list_containers_task(ws: websockets.WebSocketServerProtocol, payload):
     data_dict = dict()
     for container, info in core.scan():
+        status = 'removed' if info.get('removed') else container.status
         data_dict[container.short_id] = dict(
-            gpu_ids=info['gpu_ids'], name=container.name, user=info['user'], status=container.status,
+            gpu_ids=info['gpu_ids'], name=container.name, user=info['user'], status=status,
             node=hostname
         )
     for short_id, es in core.exit_store.items():
@@ -99,6 +101,13 @@ def stop_container_task(ws: websockets.WebSocketServerProtocol, payload):
     elif len(filt) > 1:
         raise AriesError(15, 'container ambiguous: ' + str([v.name for v in filt]))
     core.stop(container)
+    return dict()
+
+
+def kill_container_task(ws: websockets.WebSocketServerProtocol, payload):
+    container = payload['container']
+    tyck(container, str, 'container')
+    core.kill(container)
     return dict()
 
 
@@ -229,6 +238,7 @@ dispatch = dict(
     get_logs=threaded_handler(get_logs_task),
     stop_container=threaded_handler(stop_container_task),
     remove_container=threaded_handler(remove_container_task),
+    kill_container=threaded_handler(kill_container_task),
     tcpconn=tcpconn_handler,
     tcpsend=tcpsend_handler,
     tcpstop=tcpstop_handler,
