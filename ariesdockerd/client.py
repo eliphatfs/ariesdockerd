@@ -101,8 +101,8 @@ async def jdelete(job: str):
     return await client_serial(ws, 'jdelete', dict(job=job))
 
 
-async def run(name: str, image: str, cmd: List[str], n_gpus: int, n_jobs: Optional[int] = None, env: Optional[list] = None):
-    return await client_serial(ws, 'run', dict(name=name, image=image, exec=cmd, n_gpus=n_gpus, n_jobs=n_jobs, env=env))
+async def run(name: str, image: str, cmd: List[str], n_gpus: int, n_jobs: Optional[int] = None, env: Optional[list] = None, node_exclude: str = '', node_include: str = ''):
+    return await client_serial(ws, 'run', dict(name=name, image=image, exec=cmd, n_gpus=n_gpus, n_jobs=n_jobs, env=env, node_exclude=node_exclude, node_include=node_include))
 
 
 async def portfwd(container: str, port: str):
@@ -224,6 +224,8 @@ async def run_command(argv):
     psource.add_argument('file')
 
     prun = subs.add_parser('run')
+    prun.add_argument('-x', '--node_exclude', default='', type=str)
+    prun.add_argument('-n', '--node_include', default='', type=str)
     prun.add_argument('-j', '--n_jobs', default=None, type=int)
     prun.add_argument('-g', '--n_gpus', default=1, type=int)
     prun.add_argument('-e', '--env', metavar="KEY=VALUE", nargs='*', default=[])

@@ -210,7 +210,7 @@ async def nodes_handler(ws: websockets.WebSocketServerProtocol, payload):
     return dict(nodes=nodes)
 
 
-async def run_handler(ws: websockets.WebSocketServerProtocol, payload):
+async def run_handler(ws: websockets.WebSocketServerProtocol, payload: dict):
     user = check_auth(ws)
     n_jobs = payload.get('n_jobs')
     n_gpus = payload['n_gpus']
@@ -218,9 +218,17 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload):
     image = payload['image']
     cmd = payload['exec']
     env = payload.get('env', [])
+    exc = payload.get('node_exclude', '').split(',')
+    inc = payload.get('node_include', '').split(',')
+    exc = list(filter(None, exc))
+    inc = list(filter(None, inc))
     nodes = await collect_nodes(True)
     available = {}
     for node, info in nodes.items():
+        if node in exc:
+            continue
+        if len(inc) and node not in inc:
+            continue
         available[node] = info['free_gpu_ids']
         if n_jobs is None:
             if name in info['names']:
@@ -229,6 +237,8 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload):
             for i in range(n_jobs):
                 if ('%s-%d' % (name, i)) in info['names']:
                     raise AriesError(14, 'container of same name already exists!')
+    if len(available) == 0:
+        raise AriesError(19, "all nodes excluded")
     sched = schedule(available, n_jobs, n_gpus)
     i = 0
     tasks = []
