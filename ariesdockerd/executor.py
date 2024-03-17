@@ -77,11 +77,15 @@ class Executor(object):
     
     def kill(self, container: str):
         c = self.get_managed(container)
-        self.mark_removed.add(c.short_id)
         errors = []
         for _ in range(2):
-            top_results = c.top()
-            pids = [x[top_results['Titles'].index('PID')] for x in top_results['Processes']]
+            try:
+                top_results = c.top()
+                pids = [x[top_results['Titles'].index('PID')] for x in top_results['Processes']]
+            except Exception as exc:
+                errors.append(repr(exc))
+                time.sleep(1)
+                continue
             for pid in pids:
                 try:
                     psutil.Process(int(pid)).kill()
@@ -94,6 +98,7 @@ class Executor(object):
             c.remove(force=True)
         except Exception as exc:
             errors.append(repr(exc))
+        self.mark_removed.add(c.short_id)
         if len(errors):
             raise ValueError('\n'.join(errors))
 
