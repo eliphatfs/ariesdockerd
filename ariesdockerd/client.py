@@ -301,7 +301,7 @@ async def main():
             print('[error] login failed:', auth['msg'])
         else:
             print('logged in as', auth['user'])
-        await AriesShell().run()
+        await AriesShell(False).run()
     finally:
         await ws.close()
 
