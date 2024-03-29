@@ -225,11 +225,6 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload: dict):
     nodes = await collect_nodes(True)
     available = {}
     for node, info in nodes.items():
-        if node in exc:
-            continue
-        if len(inc) and node not in inc:
-            continue
-        available[node] = info['free_gpu_ids']
         if n_jobs is None:
             if name in info['names']:
                 raise AriesError(14, 'container of same name already exists!')
@@ -237,6 +232,11 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload: dict):
             for i in range(n_jobs):
                 if ('%s-%d' % (name, i)) in info['names']:
                     raise AriesError(14, 'container of same name already exists!')
+        if node in exc:
+            continue
+        if len(inc) and node not in inc:
+            continue
+        available[node] = info['free_gpu_ids']
     if len(available) == 0:
         raise AriesError(19, "all nodes excluded")
     sched = schedule(available, n_jobs, n_gpus)
