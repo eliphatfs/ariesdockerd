@@ -55,16 +55,18 @@ def run_container_task(ws: websockets.WebSocketServerProtocol, payload):
     cmd = payload['exec']
     user = payload['user']
     env = payload['env']
+    timeout = payload['timeout']
     tyck(name, str, 'name')
     tyck(image, str, 'image')
     tyck(cmd, list, 'exec')
     tyck(user, str, 'user')
     tyck(gpu_ids, list, 'gpu_ids')
     tyck(env, list, 'env')
+    tyck(timeout, int, 'timeout')
     assert name not in names, 'container already exists: %s' % name
     for gpu_id in gpu_ids:
         assert gpu_id in gpus, 'gpu not found or already in use: %s' % gpu_id
-    cid = core.run(name, image, cmd, gpu_ids, user, env)
+    cid = core.run(name, image, cmd, gpu_ids, user, env, timeout)
     return dict(short_id=cid)
 
 

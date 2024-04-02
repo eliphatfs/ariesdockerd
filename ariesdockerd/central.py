@@ -6,6 +6,7 @@ from typing import *
 from collections import Counter
 from .auth import run_auth
 from .error import AriesError
+from .config import get_config
 from .protocol import command_handler, NoResponse, AsyncClient
 from .scheduling import schedule
 
@@ -218,10 +219,17 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload: dict):
     image = payload['image']
     cmd = payload['exec']
     env = payload.get('env', [])
+    timeout = int(payload.get('timeout', 0))
     exc = payload.get('node_exclude', '').split(',')
     inc = payload.get('node_include', '').split(',')
     exc = list(filter(None, exc))
     inc = list(filter(None, inc))
+    if n_jobs is None:
+        policy = get_config()
+        if n_gpus > 0 and timeout <= 0 or timeout > policy.policy_pod_time_limit:
+            raise AriesError(20, 'timeout policy: non-batch workload should have time limit <= %d' % policy.policy_pod_time_limit)
+        if n_gpus > policy.policy_pod_gpu_limit:
+            raise AriesError(21, 'gpu policy: non-batch workload should have gpu <= %d' % policy.policy_pod_gpu_limit)
     nodes = await collect_nodes(True)
     available = {}
     for node, info in nodes.items():
@@ -254,7 +262,8 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload: dict):
                     image=image,
                     exec=cmd,
                     user=user,
-                    env=env
+                    env=env,
+                    timeout=timeout
                 ))))
     await asyncio.wait(tasks)
     return cat_aggregate([task.result() for task in tasks])

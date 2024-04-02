@@ -4,5 +4,7 @@
     "mount_paths": ["/:/host"],
     "grafana_endpoint": "",
     "grafana_userid": 0,
-    "grafana_key": ""
+    "grafana_key": "",
+    "policy_pod_time_limit": 21600,
+    "policy_pod_gpu_limit": 2
 }

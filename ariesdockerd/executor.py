@@ -6,6 +6,7 @@ import psutil
 import logging
 from typing import *
 from dataclasses import dataclass
+from dateutil.parser import isoparse
 from docker.types import DeviceRequest, Ulimit
 from docker.models.containers import Container
 from .config import get_config
@@ -50,9 +51,11 @@ class Executor(object):
     def stop(self, container: str):
         return self.get_managed(container).stop()
 
-    def run(self, name: str, image: str, cmd: Union[str, List[str]], gpu_ids: List[int], user: str, env: list):
+    def run(self, name: str, image: str, cmd: Union[str, List[str]], gpu_ids: List[int], user: str, env: list, timeout: int):
         gpu_id_string = ','.join(map(str, gpu_ids))
-        bookkeep_info = dict(gpu_ids=gpu_ids, user=user)
+        if timeout <= 0:
+            timeout = 2147483647
+        bookkeep_info = dict(gpu_ids=gpu_ids, user=user, timeout=timeout)
         token = jwt.encode(bookkeep_info, get_config().jwt_key, "HS256")
         return self.client.containers.run(
             image, cmd,
@@ -128,3 +131,11 @@ class Executor(object):
                     time.time()
                 )
                 container.remove()
+            created_str = container.attrs.get("Created")
+            if created_str:
+                created = isoparse(created_str)
+                if time.time() - created.timestamp() > info.get("timeout", 2147483647):
+                    try:
+                        self.stop(container.short_id)
+                    except Exception:
+                        self.kill(container.short_id)

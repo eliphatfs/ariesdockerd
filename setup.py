@@ -35,6 +35,7 @@ setuptools.setup(
         'docker',
         'tabulate',
         'websockets',
+        'python-dateutil',
         'aiocmd==0.1.5',
         'typing_extensions'
     ],

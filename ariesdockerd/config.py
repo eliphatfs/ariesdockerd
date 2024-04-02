@@ -13,6 +13,8 @@ class Config:
     grafana_endpoint: str
     grafana_userid: int
     grafana_key: str
+    policy_pod_time_limit: int
+    policy_pod_gpu_limit: int
 
 
 @functools.lru_cache(maxsize=None)
