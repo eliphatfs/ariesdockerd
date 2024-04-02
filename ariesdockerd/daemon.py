@@ -33,7 +33,7 @@ def node_info_task(ws: websockets.WebSocketServerProtocol, payload):
         names.add(container.name)
         ids.add(container.short_id)
         if container.status != 'dead' and not info.get('removed'):
-            for gpu in info['gpu_ids']:
+            for gpu in info['gpu_ids'] and gpu in gpus:
                 gpus.remove(gpu)
     if include_finalized:
         for k, v in core.exit_store.items():
