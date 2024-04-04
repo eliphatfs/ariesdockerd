@@ -65,11 +65,11 @@ class Executor(object):
             devices=self.shared_devices,
             device_requests=[DeviceRequest(device_ids=[gpu_id_string], capabilities=[['gpu']])],
             ulimits=[Ulimit(name='memlock', soft=1048576000, hard=1048576000)],
-            shm_size='%dG' % (32 * len(gpu_ids) + 16),
+            shm_size='%dG' % (64 * len(gpu_ids) + 32),
             network_mode='host',
             volumes=self.mount_paths,
             labels={"ariesmanaged": token},
-            environment=env
+            environment=env + (['NCCL_P2P_DISABLE=1'] if len(gpu_ids) < 8 else [])
         ).short_id
 
     def logs(self, container: str):
@@ -138,4 +138,7 @@ class Executor(object):
                     try:
                         self.stop(container.short_id)
                     except Exception:
-                        self.kill(container.short_id)
+                        try:
+                            self.kill(container.short_id)
+                        except Exception as exc:
+                            print(exc)
