@@ -50,31 +50,42 @@ class Executor(object):
             raise ValueError("container not managed by executor", container)
         return cont
 
+    def get_any(self, container: str):
+        cont: Container = self.client.containers.get(container)
+        return cont
+
     def stop(self, container: str):
         c = self.get_managed(container)
         try:
             c.stop()
         except Exception:
-            try:
-                subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name])
-                time.sleep(0.1)
-            except Exception:
+            self.get_any(c.name + '-ariesdv0').stop()
+            for i in range(4):
+                try:
+                    if os.path.ismount("/run/ariesdockerd/" + c.name):
+                        subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name])
+                    break
+                except Exception:
+                    logging.warning("umount failed, trying umount again in %d", 2 ** i)
+                    time.sleep(2 ** i)
+            else:
                 logging.warning("umount failed, trying force umount")
                 try:
                     subprocess.check_call(["umount", "-f", "/run/ariesdockerd/" + c.name])
                 except Exception:
                     if os.path.ismount("/run/ariesdockerd/" + c.name):
                         logging.warning("force umount failed, failover")
-                        raise
                     else:
                         logging.warning("mountpoint does not exist?!")
             try:
                 self.get_managed(container).stop()
             except NotFound:
                 logging.info("container self-terminated after unmount")
-            logging.info("Successfully re-stopped")
-        if os.path.ismount("/run/ariesdockerd/" + c.name):
-            subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name])
+            logging.info("successfully re-stopped %s", c.name)
+        try:
+            self.get_any(c.name + '-ariesdv0').stop()
+        except NotFound:
+            pass
 
     def run(self, name: str, image: str, cmd: Union[str, List[str]], gpu_ids: List[int], user: str, env: list, timeout: int):
         gpu_id_string = ','.join(map(str, gpu_ids))
@@ -84,15 +95,34 @@ class Executor(object):
         token = jwt.encode(bookkeep_info, get_config().jwt_key, "HS256")
         based = "/run/ariesdockerd/" + name
         mountp = based + "/mountp"
-        logf = based + "/out.log"
-        errf = based + "/err.log"
         os.makedirs(mountp, exist_ok=True)
-        subprocess.Popen([
-            "/usr/local/bin/weed", "mount",
-            "-replication=001", "-filer=10.8.150.13:8888", "-filer.path=/ariesdv0", "-dir=" + mountp
-        ], stdin=subprocess.DEVNULL, stdout=open(logf, "wb"), stderr=open(errf, "wb"))
-        while not os.path.ismount(mountp):
+        self.client.containers.run(
+            'python:3.10',
+            [
+                "/usr/local/bin/weed", "mount",
+                "-replication=001", "-filer=10.8.150.13:8888", "-filer.path=/ariesdv0",
+                "-dir=" + mountp
+            ],
+            name=name + '-ariesdv0',
+            hostname=name + '-ariesdv0',
+            detach=True,
+            remove=True,
+            devices=['/dev/fuse:/dev/fuse'],
+            cap_add=['SYS_ADMIN'],
+            shm_size='16G',
+            network_mode='host',
+            volumes=[
+                "/run/ariesdockerd:/run/ariesdockerd",
+                "/etc/seaweedfs:/etc/seaweedfs",
+                "/usr/local/bin/weed:/usr/local/bin/weed"
+            ]
+        )
+        for _ in range(200):
             time.sleep(0.1)
+            if os.path.ismount(mountp):
+                break
+        if not os.path.ismount(mountp):
+            raise ValueError("mount failed")
         return self.client.containers.run(
             image, cmd,
             name=name,
@@ -115,6 +145,12 @@ class Executor(object):
         return self.get_managed(container).status
     
     def kill(self, container: str):
+        try:
+            self.stop(container)
+        except Exception:
+            pass
+        else:
+            return
         c = self.get_managed(container)
         errors = []
         for _ in range(2):
@@ -176,5 +212,5 @@ class Executor(object):
                     except Exception:
                         try:
                             self.kill(container.short_id)
-                        except Exception as exc:
-                            print(exc)
+                        except Exception:
+                            logging.exception("book keeping kill failed")
