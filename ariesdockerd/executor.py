@@ -65,8 +65,8 @@ class Executor(object):
             except NotFound:
                 logging.warning("self removed after fuse stop")
             logging.warning("re-stop successful %s", c.name)
-        if os.path.ismount("/run/ariesdockerd/" + c.name):
-            subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name])
+        if os.path.ismount("/run/ariesdockerd/" + c.name + "/mountp"):
+            subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name + "/mountp"])
 
     def run(self, name: str, image: str, cmd: Union[str, List[str]], gpu_ids: List[int], user: str, env: list, timeout: int):
         gpu_id_string = ','.join(map(str, gpu_ids))
@@ -138,8 +138,8 @@ class Executor(object):
         except Exception as exc:
             errors.append(repr(exc))
         try:
-            if os.path.ismount("/run/ariesdockerd/" + c.name):
-                subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name])
+            if os.path.ismount("/run/ariesdockerd/" + c.name + "/mountp"):
+                subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name + "/mountp"])
         except Exception as exc:
             errors.append(repr(exc))
         for _ in range(2):
