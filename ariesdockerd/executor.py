@@ -4,11 +4,13 @@ import time
 import docker
 import psutil
 import logging
+import subprocess
 from typing import *
 from dataclasses import dataclass
 from dateutil.parser import isoparse
 from docker.types import DeviceRequest, Ulimit
 from docker.models.containers import Container
+from docker.errors import NotFound
 from .config import get_config
 
 
@@ -49,7 +51,30 @@ class Executor(object):
         return cont
 
     def stop(self, container: str):
-        return self.get_managed(container).stop()
+        c = self.get_managed(container)
+        try:
+            c.stop()
+        except Exception:
+            try:
+                subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name])
+                time.sleep(0.1)
+            except Exception:
+                logging.warning("umount failed, trying force umount")
+                try:
+                    subprocess.check_call(["umount", "-f", "/run/ariesdockerd/" + c.name])
+                except Exception:
+                    if os.path.ismount("/run/ariesdockerd/" + c.name):
+                        logging.warning("force umount failed, failover")
+                        raise
+                    else:
+                        logging.warning("mountpoint does not exist?!")
+            try:
+                self.get_managed(container).stop()
+            except NotFound:
+                logging.info("container self-terminated after unmount")
+            logging.info("Successfully re-stopped")
+        if os.path.ismount("/run/ariesdockerd/" + c.name):
+            subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name])
 
     def run(self, name: str, image: str, cmd: Union[str, List[str]], gpu_ids: List[int], user: str, env: list, timeout: int):
         gpu_id_string = ','.join(map(str, gpu_ids))
@@ -57,6 +82,18 @@ class Executor(object):
             timeout = 2147483647
         bookkeep_info = dict(gpu_ids=gpu_ids, user=user, timeout=timeout)
         token = jwt.encode(bookkeep_info, get_config().jwt_key, "HS256")
+        based = "/run/ariesdockerd/" + name
+        mountp = based + "/mountp"
+        logf = based + "/out.log"
+        errf = based + "/err.log"
+        os.makedirs(based + "/mountp", exist_ok=True)
+        os.makedirs("/run/ariesdockerd/" + name + "/mount", exist_ok=True)
+        subprocess.Popen([
+            "/usr/local/bin/weed", "mount",
+            "-replication=001", "-filer=10.8.150.13:8888", "-filer.path=/ariesdv0", "-dir=" + mountp
+        ], stdin=subprocess.DEVNULL, stdout=open(logf, "wb"), stderr=open(errf, "wb"))
+        while not os.path.ismount(mountp):
+            time.sleep(0.1)
         return self.client.containers.run(
             image, cmd,
             name=name,
@@ -67,7 +104,7 @@ class Executor(object):
             ulimits=[Ulimit(name='memlock', soft=1048576000, hard=1048576000)],
             shm_size='%dG' % (64 * len(gpu_ids) + 32),
             network_mode='host',
-            volumes=self.mount_paths,
+            volumes=[mountp + ":/ariesdv0"],
             labels={"ariesmanaged": token},
             environment=env + (['NCCL_P2P_DISABLE=1'] if len(gpu_ids) < 8 else [])
         ).short_id
