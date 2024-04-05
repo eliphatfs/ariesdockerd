@@ -56,17 +56,8 @@ class Executor(object):
 
     def stop(self, container: str):
         c = self.get_managed(container)
-        try:
-            c.stop()
-        except Exception:
-            self.get_any(c.name + '-ariesdv0').stop()
-            try:
-                self.get_managed(container).stop()
-            except NotFound:
-                logging.warning("self removed after fuse stop")
-            logging.warning("re-stop successful %s", c.name)
-        if os.path.ismount("/run/ariesdockerd/" + c.name + "/mountp"):
-            subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name + "/mountp"])
+        c.stop()
+        self.get_any(c.name + '-ariesdv0').stop()
 
     def run(self, name: str, image: str, cmd: Union[str, List[str]], gpu_ids: List[int], user: str, env: list, timeout: int):
         gpu_id_string = ','.join(map(str, gpu_ids))
@@ -74,7 +65,7 @@ class Executor(object):
             timeout = 2147483647
         bookkeep_info = dict(gpu_ids=gpu_ids, user=user, timeout=timeout)
         token = jwt.encode(bookkeep_info, get_config().jwt_key, "HS256")
-        based = "/run/ariesdockerd/" + name
+        based = "/run/ariesdockerd/" + name + str(int(time.time()))
         mountp = based + "/mountp"
         os.makedirs(mountp, exist_ok=True)
         self.client.containers.run(
@@ -135,11 +126,6 @@ class Executor(object):
         errors = []
         try:
             self.get_any(c.name + '-ariesdv0').stop()
-        except Exception as exc:
-            errors.append(repr(exc))
-        try:
-            if os.path.ismount("/run/ariesdockerd/" + c.name + "/mountp"):
-                subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name + "/mountp"])
         except Exception as exc:
             errors.append(repr(exc))
         for _ in range(2):
