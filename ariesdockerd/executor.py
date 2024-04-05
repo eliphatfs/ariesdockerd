@@ -80,13 +80,14 @@ class Executor(object):
         self.client.containers.run(
             'tcnghia/fusermount:latest',
             [
-                "/usr/local/bin/weed", "mount",
+                "/usr/local/bin/weed", "-logdir=" + based, "mount",
                 "-replication=001", "-filer=10.8.150.13:8888", "-filer.path=/ariesdv0",
                 "-dir=" + mountp
             ],
             name=name + '-ariesdv0',
             hostname=name + '-ariesdv0',
             detach=True,
+            remove=True,
             devices=['/dev/fuse:/dev/fuse'],
             cap_add=['SYS_ADMIN'],
             security_opt=['apparmor:unconfined'],
@@ -132,6 +133,15 @@ class Executor(object):
     def kill(self, container: str):
         c = self.get_managed(container)
         errors = []
+        try:
+            self.get_any(c.name + '-ariesdv0').stop()
+        except Exception as exc:
+            errors.append(repr(exc))
+        try:
+            if os.path.ismount("/run/ariesdockerd/" + c.name):
+                subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name])
+        except Exception as exc:
+            errors.append(repr(exc))
         for _ in range(2):
             try:
                 top_results = c.top()
