@@ -113,6 +113,7 @@ class Executor(object):
             network_mode='host',
             volumes=[
                 "/run/ariesdockerd:/run/ariesdockerd",
+                "/etc/ariesdockerd:/etc/ariesdockerd",
                 "/etc/seaweedfs:/etc/seaweedfs",
                 "/usr/local/bin/weed:/usr/local/bin/weed"
             ]
