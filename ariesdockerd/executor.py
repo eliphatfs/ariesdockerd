@@ -4,11 +4,13 @@ import time
 import docker
 import psutil
 import logging
+import subprocess
 from typing import *
 from dataclasses import dataclass
 from dateutil.parser import isoparse
-from docker.types import DeviceRequest, Ulimit
+from docker.types import DeviceRequest, Ulimit, Mount
 from docker.models.containers import Container
+from docker.errors import NotFound
 from .config import get_config
 
 
@@ -48,8 +50,23 @@ class Executor(object):
             raise ValueError("container not managed by executor", container)
         return cont
 
+    def get_any(self, container: str):
+        cont: Container = self.client.containers.get(container)
+        return cont
+
     def stop(self, container: str):
-        return self.get_managed(container).stop()
+        c = self.get_managed(container)
+        try:
+            c.stop()
+        except Exception:
+            self.get_any(c.name + '-ariesdv0').stop()
+            try:
+                self.get_managed(container).stop()
+            except NotFound:
+                logging.warning("self removed after fuse stop")
+            logging.warning("re-stop successful %s", c.name)
+        if os.path.ismount("/run/ariesdockerd/" + c.name):
+            subprocess.check_call(["umount", "/run/ariesdockerd/" + c.name])
 
     def run(self, name: str, image: str, cmd: Union[str, List[str]], gpu_ids: List[int], user: str, env: list, timeout: int):
         gpu_id_string = ','.join(map(str, gpu_ids))
@@ -57,6 +74,39 @@ class Executor(object):
             timeout = 2147483647
         bookkeep_info = dict(gpu_ids=gpu_ids, user=user, timeout=timeout)
         token = jwt.encode(bookkeep_info, get_config().jwt_key, "HS256")
+        based = "/run/ariesdockerd/" + name
+        mountp = based + "/mountp"
+        os.makedirs(mountp, exist_ok=True)
+        self.client.containers.run(
+            'tcnghia/fusermount:latest',
+            [
+                "/usr/local/bin/weed", "mount",
+                "-replication=001", "-filer=10.8.150.13:8888", "-filer.path=/ariesdv0",
+                "-dir=" + mountp
+            ],
+            name=name + '-ariesdv0',
+            hostname=name + '-ariesdv0',
+            detach=True,
+            devices=['/dev/fuse:/dev/fuse'],
+            cap_add=['SYS_ADMIN'],
+            security_opt=['apparmor:unconfined'],
+            shm_size='16G',
+            network_mode='host',
+            mounts=[
+                Mount('/run/ariesdockerd', '/run/ariesdockerd', 'bind', propagation='shared')
+            ],
+            volumes=[
+                "/etc/ariesdockerd:/etc/ariesdockerd",
+                "/etc/seaweedfs:/etc/seaweedfs",
+                "/usr/local/bin/weed:/usr/local/bin/weed"
+            ]
+        )
+        for _ in range(200):
+            time.sleep(0.1)
+            if os.path.ismount(mountp):
+                break
+        if not os.path.ismount(mountp):
+            raise ValueError("mount failed")
         return self.client.containers.run(
             image, cmd,
             name=name,
@@ -67,7 +117,7 @@ class Executor(object):
             ulimits=[Ulimit(name='memlock', soft=1048576000, hard=1048576000)],
             shm_size='%dG' % (64 * len(gpu_ids) + 32),
             network_mode='host',
-            volumes=self.mount_paths,
+            volumes=[mountp + ":/ariesdv0"],
             labels={"ariesmanaged": token},
             environment=env + (['NCCL_P2P_DISABLE=1'] if len(gpu_ids) < 8 else [])
         ).short_id
