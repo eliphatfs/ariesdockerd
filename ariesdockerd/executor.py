@@ -97,7 +97,7 @@ class Executor(object):
         mountp = based + "/mountp"
         os.makedirs(mountp, exist_ok=True)
         self.client.containers.run(
-            'python:3.10',
+            'tcnghia/fusermount:latest',
             [
                 "/usr/local/bin/weed", "mount",
                 "-replication=001", "-filer=10.8.150.13:8888", "-filer.path=/ariesdv0",
@@ -106,9 +106,9 @@ class Executor(object):
             name=name + '-ariesdv0',
             hostname=name + '-ariesdv0',
             detach=True,
-            remove=True,
             devices=['/dev/fuse:/dev/fuse'],
             cap_add=['SYS_ADMIN'],
+            security_opt=['apparmor:unconfined'],
             shm_size='16G',
             network_mode='host',
             volumes=[
@@ -209,9 +209,6 @@ class Executor(object):
                 created = isoparse(created_str)
                 if time.time() - created.timestamp() > info.get("timeout", 2147483647):
                     try:
-                        self.stop(container.short_id)
+                        self.kill(container.short_id)
                     except Exception:
-                        try:
-                            self.kill(container.short_id)
-                        except Exception:
-                            logging.exception("book keeping kill failed")
+                        logging.exception("book keeping kill failed")
