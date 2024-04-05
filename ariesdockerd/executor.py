@@ -86,8 +86,7 @@ class Executor(object):
         mountp = based + "/mountp"
         logf = based + "/out.log"
         errf = based + "/err.log"
-        os.makedirs(based + "/mountp", exist_ok=True)
-        os.makedirs("/run/ariesdockerd/" + name + "/mount", exist_ok=True)
+        os.makedirs(mountp, exist_ok=True)
         subprocess.Popen([
             "/usr/local/bin/weed", "mount",
             "-replication=001", "-filer=10.8.150.13:8888", "-filer.path=/ariesdv0", "-dir=" + mountp
