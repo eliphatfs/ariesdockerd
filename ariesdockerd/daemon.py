@@ -267,7 +267,10 @@ async def cleanup():
 
 async def bookkeep():
     while not stop_signal.done():
-        await threaded_handler(core.bookkeep)()
+        try:
+            await threaded_handler(core.bookkeep)()
+        except Exception:
+            logging.exception("book keeping error")
         await asyncio.wait([asyncio.sleep(10), stop_signal], return_when=asyncio.FIRST_COMPLETED)
 
 
