@@ -104,7 +104,6 @@ class Executor(object):
             name=name,
             hostname=name,
             detach=True,
-            remove=True,
             devices=self.shared_devices,
             device_requests=[DeviceRequest(device_ids=[gpu_id_string], capabilities=[['gpu']])],
             ulimits=[Ulimit(name='memlock', soft=1048576000, hard=1048576000)],
