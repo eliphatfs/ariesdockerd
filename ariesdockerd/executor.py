@@ -177,6 +177,12 @@ class Executor(object):
                     time.time()
                 )
                 container.remove()
+                try:
+                    self.get_any(container.name + '-ariesdv0').stop()
+                except NotFound:
+                    pass
+                except Exception:
+                    logging.exception("cannot stop volume daemon")
             created_str = container.attrs.get("Created")
             if created_str:
                 created = isoparse(created_str)
