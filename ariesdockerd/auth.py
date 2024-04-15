@@ -8,7 +8,7 @@ from typing_extensions import Literal
 
 def run_auth(token: str):
     try:
-        decoded = jwt.decode(token, get_config().jwt_key, algorithms=["HS256"])
+        decoded = jwt.decode(token, get_config().jwt_key, algorithms=["HS256"], leeway=2592000)
         if 'user' not in decoded:
             raise AriesError(4, 'user not found in token, problem with token issuer')
         if 'kind' not in decoded:
