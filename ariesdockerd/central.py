@@ -269,6 +269,20 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload: dict):
     return cat_aggregate([task.result() for task in tasks])
 
 
+async def follow_logs_handler(ws: websockets.WebSocketServerProtocol, payload):
+    check_auth(ws)
+    container = payload['container']
+    tyck(container, str, 'container')
+    return await daemon_broadcast('follow_logs', dict(container=container), any_aggregate)
+
+
+async def poll_logs_handler(ws: websockets.WebSocketServerProtocol, payload):
+    check_auth(ws)
+    follower = payload['follower']
+    tyck(follower, str, 'follower')
+    return await daemon_broadcast('poll_logs', dict(follower=follower), any_aggregate)
+
+
 tcp_routes: Dict[str, list] = dict()
 CLIENT, DAEMON, MSG_ID, WAITING = 0, 1, 2, 3
 
@@ -360,6 +374,8 @@ dispatch = dict(
     ps=ps_handler,
     nodes=nodes_handler,
     run=run_handler,
+    follow_logs=follow_logs_handler,
+    poll_logs=poll_logs_handler,
     tcpconn=tcpconn_handler,
     tcpsend=tcpsend_handler,
     tcpstop=tcpstop_handler,

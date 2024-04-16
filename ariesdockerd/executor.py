@@ -117,6 +117,9 @@ class Executor(object):
     def logs(self, container: str):
         return self.get_managed(container).logs()
 
+    def logs_follow(self, container: str) -> Generator[bytes, None, None]:
+        return self.get_managed(container).logs(stream=True)
+
     def stat(self, container: str):
         return self.get_managed(container).status
     

@@ -1,5 +1,7 @@
 import time
 import json
+import uuid
+import queue
 import socket
 import base64
 import logging
@@ -126,6 +128,44 @@ def remove_container_task(ws: websockets.WebSocketServerProtocol, payload):
     return dict()
 
 
+log_followers = dict()
+
+
+def log_follower_thread(gen, q: queue.Queue):
+    for b in gen:
+        b: bytes
+        q.put(b.decode(errors='replace'))
+
+
+def follow_logs_task(ws: websockets.WebSocketServerProtocol, payload):
+    container = payload['container']
+    tyck(container, str, 'container')
+    gen = core.logs_follow(container)
+    follower = str(uuid.uuid4())
+    log_followers[follower] = queue.Queue(maxsize=8)
+    threading.Thread(target=log_follower_thread, args=(gen, log_followers[follower]), daemon=True).start()
+    return dict(follower=follower)
+
+
+def poll_logs_task(ws: websockets.WebSocketServerProtocol, payload):
+    follower = payload['follower']
+    tyck(follower, str, 'follower')
+    q: queue.Queue = log_followers[follower]
+    x = []
+    L = 0
+    t = time.time()
+    while time.time() < t + 1:
+        try:
+            item = q.get(timeout=0.5)
+            x.append(item)
+            L += len(item)
+            if L >= 2 ** 20:
+                break
+        except queue.Empty:
+            break
+    return dict(log=''.join(x))
+
+
 tcp_connections = dict()
 READER, WRITER, MSG_ID, FLOWCONTROL = 0, 1, 2, 3
 
@@ -149,7 +189,10 @@ async def tcprecv_handler(ws: websockets.WebSocketServerProtocol, client: str, r
     last_write = None
     tcp = tcp_connections[client]
     while True:
-        nxt = await reader.read(16384)
+        try:
+            nxt = await asyncio.wait_for(reader.read(16384), 1800)
+        except asyncio.TimeoutError:
+            nxt = b""
         if not len(nxt):
             asyncio.create_task(tcpalive(client))
             break
@@ -242,6 +285,8 @@ dispatch = dict(
     stop_container=threaded_handler(stop_container_task),
     remove_container=threaded_handler(remove_container_task),
     kill_container=threaded_handler(kill_container_task),
+    follow_logs=threaded_handler(follow_logs_task),
+    poll_logs=threaded_handler(poll_logs_task),
     tcpconn=tcpconn_handler,
     tcpsend=tcpsend_handler,
     tcpstop=tcpstop_handler,

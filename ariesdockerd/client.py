@@ -70,7 +70,18 @@ async def ps(filt: Optional[str] = None):
     return r
 
 
-async def logs(container: str, output: str = None):
+async def logs(container: str, output: str = None, follow: bool = False):
+    if follow:
+        r = await client_serial(ws, 'follow_logs', dict(container=container))
+        while True:
+            try:
+                res = await client_serial(ws, 'poll_logs', dict(follower=r['follower']))
+            except Exception:
+                import traceback
+                traceback.print_exc()
+                break
+            print(res['log'], end='')
+        return r
     r = await client_serial(ws, 'logs', dict(container=container))
     if r['code'] == 0:
         if output is None:
@@ -200,6 +211,7 @@ async def run_command(argv):
     plogs = subs.add_parser('logs')
     plogs.add_argument('container')
     plogs.add_argument('-o', '--output', default=None, type=str)
+    plogs.add_argument('-f', '--follow', action='store_true')
 
     pstop = subs.add_parser('stop')
     pstop.add_argument('container')
