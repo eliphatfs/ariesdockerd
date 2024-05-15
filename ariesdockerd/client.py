@@ -55,6 +55,7 @@ async def nodes(show_jobs=False):
             if show_jobs:
                 row.append('\n'.join(info['names']))
             table.append(row)
+        table = sorted(table, key=lambda x: x[0])
         print(tabulate.tabulate(table, headers=header))
     return r
 
@@ -66,6 +67,7 @@ async def ps(filt: Optional[str] = None):
         table = []
         for k, v in r['containers'].items():
             table.append([k, v['name'], v['status'], v['user'], v['node'], ','.join(map(str, v['gpu_ids']))])
+        table = sorted(table, key=lambda x: x[1])
         print(tabulate.tabulate(table, headers=header))
     return r
 
