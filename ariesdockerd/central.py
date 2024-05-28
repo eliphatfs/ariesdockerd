@@ -211,6 +211,9 @@ async def nodes_handler(ws: websockets.WebSocketServerProtocol, payload):
     return dict(nodes=nodes)
 
 
+sched_lock = list()
+
+
 async def run_handler(ws: websockets.WebSocketServerProtocol, payload: dict):
     user = check_auth(ws)
     n_jobs = payload.get('n_jobs')
@@ -247,7 +250,14 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload: dict):
         available[node] = info['free_gpu_ids']
     if len(available) == 0:
         raise AriesError(19, "all nodes excluded")
+    for node, gpus in sched_lock:
+        for gpu in gpus:
+            try:
+                available[node].remove(gpu)
+            except (KeyError, ValueError):
+                pass
     sched = schedule(available, n_jobs, n_gpus)
+    sched_lock.extend(sched)
     i = 0
     tasks = []
     for daemon in daemons:
@@ -266,6 +276,11 @@ async def run_handler(ws: websockets.WebSocketServerProtocol, payload: dict):
                     timeout=timeout
                 ))))
     await asyncio.wait(tasks)
+    for p in sched:
+        try:
+            sched_lock.remove(p)
+        except ValueError:
+            logging.exception("sched lock internal error")
     return cat_aggregate([task.result() for task in tasks])
 
 
