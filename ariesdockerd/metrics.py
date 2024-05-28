@@ -63,12 +63,16 @@ def report_memory_usage():
 @error_to_log
 def report_network_usage():
     interval = 15
-    net_io_s = psutil.net_io_counters(nowrap=True)
+    net_io_s = psutil.net_io_counters(pernic=True, nowrap=True)
+    sent_s = sum(nic.bytes_sent for name, nic in net_io_s.items() if name != 'lo')
+    recv_s = sum(nic.bytes_recv for name, nic in net_io_s.items() if name != 'lo')
     time.sleep(interval)
-    net_io_e = psutil.net_io_counters(nowrap=True)
+    net_io_e = psutil.net_io_counters(pernic=True, nowrap=True)
+    sent_e = sum(nic.bytes_sent for name, nic in net_io_e.items() if name != 'lo')
+    recv_e = sum(nic.bytes_recv for name, nic in net_io_e.items() if name != 'lo')
     psutil.net_io_counters.cache_clear()
-    report('ariesmond.nodes.net.up_bw', (net_io_e.bytes_sent - net_io_s.bytes_sent) / interval)
-    report('ariesmond.nodes.net.down_bw', (net_io_e.bytes_recv - net_io_s.bytes_recv) / interval)
+    report('ariesmond.nodes.net.up_bw', (sent_e - sent_s) / interval)
+    report('ariesmond.nodes.net.down_bw', (recv_e - recv_s) / interval)
 
 
 @error_to_log
