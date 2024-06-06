@@ -72,7 +72,7 @@ class Executor(object):
             'tcnghia/fusermount:latest',
             [
                 "/usr/local/bin/weed", "-logdir=" + based, "mount",
-                "-replication=001", "-filer=10.8.150.13:8888", "-filer.path=/ariesdv0",
+                "-filer=10.8.150.13:8888", "-filer.path=/ariesdv0",
                 "-dir=" + mountp
             ],
             name=name + '-ariesdv0',
