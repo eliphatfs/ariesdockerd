@@ -1,4 +1,6 @@
+import uuid
 import json
+import random
 import logging
 import asyncio
 import websockets
@@ -323,6 +325,9 @@ async def tcprecv_handler(payload):
         await tcp[DAEMON].issue('tcpflowresume', dict(client=client))
 
 
+tcp_routes2: Dict[str, Tuple[AsyncClient, int, List[asyncio.Future]]] = dict()
+
+
 async def tcpconn_handler(ws: websockets.WebSocketServerProtocol, payload):
     check_auth(ws)
     ticket = payload['ticket']
@@ -362,6 +367,64 @@ async def tcpsend_handler(ws: websockets.WebSocketServerProtocol, payload):
     raise NoResponse
 
 
+async def tcpfwd2_handler(ws: websockets.WebSocketServerProtocol, payload):
+    check_auth(ws)
+    nodes = await collect_nodes(False)
+    container = payload['container']
+    tyck(container, str, 'container')
+    port = payload['port']
+    tyck(port, int, 'port')
+    for snode, info in nodes.items():
+        if container in info['names'] or container in info['ids'] or container == snode:
+            for daemon in daemons:
+                node = state_store[daemon.ws].auth_name
+                if snode == node:
+                    session = str(uuid.uuid4())
+                    tcp_routes2[session] = daemon, port, []
+                    return dict(session=session)
+    else:
+        raise AriesError(17, "container `%s` not found" % container)
+
+
+async def wsfwd(recv: websockets.WebSocketCommonProtocol, send: websockets.WebSocketCommonProtocol):
+    async for msg in recv:
+        await send.send(msg)
+
+
+async def tcpfwd2_inbound(ws: websockets.WebSocketServerProtocol):
+    session = ws.path.split("/")[-1]
+    if session not in tcp_routes2:
+        await ws.close(1007, "port forward session invalid or not found: " + str(session))
+        return
+    daemon, port, waiting = tcp_routes2[session]
+    s1w = asyncio.Future()
+    waiting.append(s1w)
+    await daemon.issue('tcp2inbound', dict(session=session, port=port))
+    conn: websockets.WebSocketCommonProtocol = await s1w
+    t1 = asyncio.create_task(wsfwd(ws, conn))
+    t2 = asyncio.create_task(wsfwd(conn, ws))
+    await asyncio.wait([t1, t2], return_when="FIRST_COMPLETED")
+    if not ws.closed:
+        await ws.close()
+    if not conn.closed:
+        await conn.close()
+
+
+async def tcpfwd2_daemon(ws: websockets.WebSocketServerProtocol):
+    session = ws.path.split("/")[-1]
+    if session not in tcp_routes2:
+        await ws.close(1007, "port forward session invalid or not found: " + str(session))
+        return
+    daemon, port, waiting = tcp_routes2[session]
+    if not len(waiting):
+        await ws.close(1000, "client cancelled, nothing to do")
+        return
+    x = random.choice(waiting)
+    waiting.remove(x)
+    x.set_result(ws)
+    await ws.wait_closed()
+
+
 async def tcpstop_handler(ws: websockets.WebSocketServerProtocol, payload):
     check_auth(ws)
     client = payload['client']
@@ -394,10 +457,15 @@ dispatch = dict(
     tcpconn=tcpconn_handler,
     tcpsend=tcpsend_handler,
     tcpstop=tcpstop_handler,
+    tcpfwd2=tcpfwd2_handler
 )
 
 
 async def handler(ws: websockets.WebSocketServerProtocol):
+    if '/tcp2/c/' in ws.path:
+        return await tcpfwd2_inbound(ws)
+    if '/tcp2/d/' in ws.path:
+        return await tcpfwd2_daemon(ws)
     state_store[ws] = CentralState()
     try:
         await command_handler(ws, dispatch, bypass_daemon)

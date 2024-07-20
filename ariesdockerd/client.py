@@ -118,59 +118,60 @@ async def run(name: str, image: str, cmd: List[str], n_gpus: int, n_jobs: Option
     return await client_serial(ws, 'run', dict(name=name, image=image, exec=cmd, n_gpus=n_gpus, n_jobs=n_jobs, env=env, node_exclude=node_exclude, node_include=node_include, timeout=timeout))
 
 
+async def ws_to_tcp(ws: websockets.WebSocketCommonProtocol, tcp: asyncio.StreamWriter):
+    async for msg in ws:
+        tcp.write(msg)
+
+
+async def tcp_to_ws(tcp: asyncio.StreamReader, ws: websockets.WebSocketCommonProtocol):
+    while True:
+        try:
+            nxt = await asyncio.wait_for(tcp.read(16384), 1800)
+        except asyncio.TimeoutError:
+            nxt = b""
+        if not len(nxt):
+            return
+        await ws.send(nxt)
+
+
 async def portfwd(container: str, port: str):
-    clients: Dict[str, asyncio.StreamWriter] = {}
     if ':' in port:
         remoteport, localport = map(int, port.split(':'))
     else:
         remoteport, localport = int(port), int(port)
+    r = await client_serial(ws, 'tcpfwd2', dict(container=container, port=remoteport))
+    if r['code'] != 0:
+        return r
+    session = r['session']
 
+    with open(os.path.expanduser("~/.aries/config.json")) as fi:
+        cfg = json.load(fi)
+    
     async def portfwd_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         print("[info] got connection on port", localport)
-        ticket = str(uuid.uuid4())
-        clients[ticket] = writer
-        await ws.send(json.dumps(dict(ticket=ticket, cmd='tcpconn', container=container, port=remoteport)))
-        last_write = None
-        p = 0
-        while True:
-            try:
-                nxt = await reader.read(16384)
-            except Exception as exc:
-                print("[warn] got exception reading, ending connection:", repr(exc))
-                break
-            if not len(nxt):
-                break
-            enc = base64.b64encode(nxt).decode('ascii')
-            packet = json.dumps(dict(ticket=str(uuid.uuid4()), cmd='tcpsend', client=ticket, d=enc, p=p))
-            p += 1
-            if last_write is not None:
-                await last_write
-            last_write = asyncio.create_task(ws.send(packet))
-        del clients[ticket]
-        await ws.send(json.dumps(dict(ticket=str(uuid.uuid4()), cmd='tcpstop', client=ticket, p=p)))
-        writer.close()
+        c2 = await websockets.connect(cfg['addr'] + "/tcp2/c/" + session, max_size=2**22)
+        print("[info] start forwarding to port", remoteport)
+        try:
+            t1 = asyncio.create_task(ws_to_tcp(c2, writer))
+            t2 = asyncio.create_task(tcp_to_ws(reader, c2))
+            await asyncio.wait([t1, t2], return_when="FIRST_COMPLETED")
+        finally:
+            if not c2.closed:
+                await c2.close()
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+            print("[info] handled connection on port", localport)
 
     server = await asyncio.start_server(portfwd_client, host='127.0.0.1', port=localport)
-    callback = lambda: ws.close()
+    print("[info] serving on port", localport)
+    callback = lambda: server.close()
     interrupt_callbacks.append(callback)
     try:
-        print("[info] serving on port", localport)
-        async for message in ws:
-            payload = json.loads(message)
-            if payload.get('code', 0) != 0:
-                print("[error]", payload['msg'])
-            elif payload.get('cmd') == 'tcprecv':
-                if payload['client'] in clients:
-                    clients[payload['client']].write(base64.b64decode(payload['d']))
-            elif 'msg' in payload:
-                print("[info]", payload['msg'])
-            else:
-                print("[info]", payload)
-    finally:
-        interrupt_callbacks.remove(callback)
-        asyncio.create_task(reconnect())
-        server.close()
         await server.wait_closed()
+    finally:
+        server.close()
+        interrupt_callbacks.remove(callback)
 
 
 async def reconnect():

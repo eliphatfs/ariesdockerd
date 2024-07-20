@@ -16,6 +16,7 @@ from .error import AriesError
 from .config import get_config
 from .protocol import command_handler, client_serial, common_task_callback, NoResponse
 from .executor import Executor
+from .async_util import wait_any
 
 
 core = Executor()
@@ -257,6 +258,42 @@ async def tcpflowresume_handler(ws: websockets.WebSocketServerProtocol, payload)
     return dict(changed=True)
 
 
+async def ws_to_tcp(ws: websockets.WebSocketCommonProtocol, tcp: asyncio.StreamWriter):
+    async for msg in ws:
+        tcp.write(msg)
+
+
+async def tcp_to_ws(tcp: asyncio.StreamReader, ws: websockets.WebSocketCommonProtocol):
+    while True:
+        try:
+            nxt = await asyncio.wait_for(tcp.read(16384), 1800)
+        except asyncio.TimeoutError:
+            nxt = b""
+        if not len(nxt):
+            return
+        await ws.send(nxt)
+
+
+async def tcp2_connection(session, port):
+    ws = await websockets.connect(get_config().central_host + "/tcp2/d/" + session, max_size=2**22)
+    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    try:
+        t1 = asyncio.create_task(ws_to_tcp(ws, writer))
+        t2 = asyncio.create_task(tcp_to_ws(reader, ws))
+        await asyncio.wait([t1, t2], return_when="FIRST_COMPLETED")
+    finally:
+        if not ws.closed:
+            await ws.close()
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+
+async def tcp2inbound_handler(ws: websockets.WebSocketServerProtocol, payload):
+    asyncio.create_task(tcp2_connection(payload['session'], payload['port']))
+    return dict()
+
+
 def threaded_handler(func):
 
     async def _cmd(*args, **kwargs):
@@ -292,6 +329,7 @@ dispatch = dict(
     tcpstop=tcpstop_handler,
     tcpflowpause=tcpflowpause_handler,
     tcpflowresume=tcpflowresume_handler,
+    tcp2inbound=tcp2inbound_handler,
 )
 
 
@@ -301,13 +339,13 @@ async def cleanup():
     dt = (4 - cur) * 3600
     while dt < 1:
         dt += 86400
-    await asyncio.wait([asyncio.sleep(dt), stop_signal], return_when=asyncio.FIRST_COMPLETED)
+    await wait_any([asyncio.sleep(dt), stop_signal])
     while not stop_signal.done():
         s = time.time()
         core.clean_up()
         dt = 86400.0 - (time.time() - s)
         if dt >= 0:
-            await asyncio.wait([asyncio.sleep(dt), stop_signal], return_when=asyncio.FIRST_COMPLETED)
+            await wait_any([asyncio.sleep(dt), stop_signal])
 
 
 async def bookkeep():
@@ -316,7 +354,7 @@ async def bookkeep():
             await threaded_handler(core.bookkeep)()
         except Exception:
             logging.exception("book keeping error")
-        await asyncio.wait([asyncio.sleep(10), stop_signal], return_when=asyncio.FIRST_COMPLETED)
+        await wait_any([asyncio.sleep(10), stop_signal])
 
 
 def run_mond():
@@ -329,7 +367,7 @@ async def mond():
     while not stop_signal.done():
         if get_config().grafana_endpoint:
             await threaded_handler(run_mond)()
-        await asyncio.wait([asyncio.sleep(300), stop_signal], return_when=asyncio.FIRST_COMPLETED)
+        await wait_any([asyncio.sleep(300), stop_signal])
 
 
 async def one_pass():
