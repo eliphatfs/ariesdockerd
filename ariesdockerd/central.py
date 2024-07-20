@@ -454,10 +454,10 @@ dispatch = dict(
     run=run_handler,
     follow_logs=follow_logs_handler,
     poll_logs=poll_logs_handler,
-    tcpconn=tcpconn_handler,
-    tcpsend=tcpsend_handler,
-    tcpstop=tcpstop_handler,
-    tcpfwd2=tcpfwd2_handler
+    # tcpconn=tcpconn_handler,
+    # tcpsend=tcpsend_handler,
+    # tcpstop=tcpstop_handler,
+    tcpfwd2=tcpfwd2_handler,
 )
 
 
