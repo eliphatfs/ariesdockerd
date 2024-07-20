@@ -404,9 +404,9 @@ async def tcpfwd2_inbound(ws: websockets.WebSocketServerProtocol):
     t1 = asyncio.create_task(wsfwd(ws, conn))
     t2 = asyncio.create_task(wsfwd(conn, ws))
     await asyncio.wait([t1, t2], return_when="FIRST_COMPLETED")
-    if not ws.closed:
+    if ws.open:
         await ws.close()
-    if not conn.closed:
+    if conn.open:
         await conn.close()
 
 

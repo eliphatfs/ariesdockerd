@@ -282,7 +282,7 @@ async def tcp2_connection(session, port):
         t2 = asyncio.create_task(tcp_to_ws(reader, ws))
         await asyncio.wait([t1, t2], return_when="FIRST_COMPLETED")
     finally:
-        if not ws.closed:
+        if ws.open:
             await ws.close()
         await writer.drain()
         writer.close()

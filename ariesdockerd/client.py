@@ -156,7 +156,7 @@ async def portfwd(container: str, port: str):
             t2 = asyncio.create_task(tcp_to_ws(reader, c2))
             await asyncio.wait([t1, t2], return_when="FIRST_COMPLETED")
         finally:
-            if not c2.closed:
+            if c2.open:
                 await c2.close()
             await writer.drain()
             writer.close()
