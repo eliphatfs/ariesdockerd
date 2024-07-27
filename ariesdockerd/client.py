@@ -89,7 +89,7 @@ async def logs(container: str, output: str = None, follow: bool = False):
         if output is None:
             print(r['logs'])
         else:
-            with open(output, "w") as fo:
+            with open(output, "w", errors='ignore') as fo:
                 print(r['logs'], file=fo)
     return r
 
