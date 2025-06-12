@@ -34,7 +34,7 @@ setuptools.setup(
         'gputil',
         'docker',
         'tabulate',
-        'websockets==11.0.3',
+        'websockets==12.0',
         'python-dateutil',
         'aiocmd==0.1.5',
         'typing_extensions'
